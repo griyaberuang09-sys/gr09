@@ -92,7 +92,17 @@ def _check_secret(token: str):
 @app.get("/telegram-checkin", response_class=HTMLResponse, include_in_schema=False)
 def telegram_checkin_page():
     path = BASE_DIR / "telegram_checkin.html"
-    return HTMLResponse(path.read_text(encoding="utf-8"))
+    # WebView Telegram (terutama di iOS) cenderung cache halaman ini dengan
+    # agresif -- tanpa header ini, update HTML tidak akan kelihatan sampai
+    # entah kapan meski server sudah punya versi baru.
+    return HTMLResponse(
+        path.read_text(encoding="utf-8"),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/", include_in_schema=False)
