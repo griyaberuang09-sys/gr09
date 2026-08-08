@@ -77,7 +77,9 @@
   <div class="step active" id="step1">
     <div class="panel">
       <label>Nomor HP (WhatsApp aktif) <span class="req">*</span></label>
+      <button type="button" class="btn ghost sm" id="requestContactBtn" style="margin-bottom:10px;" onclick="requestPhoneFromTelegram()">📱 Pakai Nomor Telegram Saya</button>
       <input id="phone" inputmode="tel" placeholder="08xxxxxxxxxx">
+      <p class="small-muted" id="phoneHint" style="margin:-8px 0 14px;">Atau ketik manual di atas kalau nomor Telegram beda dengan yang aktif dipakai.</p>
       <button class="btn" onclick="goStep(2)">Lanjut</button>
     </div>
   </div>
@@ -102,7 +104,7 @@
         <button class="btn sm" id="shotBtn" style="display:none;" disabled onclick="capture()">Ambil Foto</button>
       </div>
       <button class="btn ghost sm" style="margin-bottom:10px;" onclick="document.getElementById('ktpFileInput').click()">📁 Unggah Foto dari Galeri/Kamera HP</button>
-      <input type="file" id="ktpFileInput" accept="image/*" capture="environment" onchange="handleFileUpload(event)">
+      <input type="file" id="ktpFileInput" accept="image/*" onchange="handleFileUpload(event)">
 
       <p id="ocrStatus" class="status info" style="display:none;"></p>
 
@@ -166,10 +168,39 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!initData) {
     document.getElementById('blockedNotice').style.display = 'block';
     document.getElementById('app').style.display = 'none';
-  } else {
-    document.getElementById('app').style.display = 'block';
+    return;
+  }
+  document.getElementById('app').style.display = 'block';
+
+  // requestContact butuh Bot API 6.9+ -- kalau klien Telegram-nya lama,
+  // sembunyikan tombolnya saja, biarkan isi manual (tidak menghalangi apa pun).
+  const supportsContact = tg && typeof tg.requestContact === 'function' &&
+    (typeof tg.isVersionAtLeast !== 'function' || tg.isVersionAtLeast('6.9'));
+  if (!supportsContact) {
+    document.getElementById('requestContactBtn').style.display = 'none';
   }
 });
+
+function requestPhoneFromTelegram(){
+  if (!tg || typeof tg.requestContact !== 'function') return;
+  const hint = document.getElementById('phoneHint');
+  tg.requestContact((shared, response) => {
+    if (!shared){
+      hint.textContent = 'Tidak dibagikan -- isi manual di atas.';
+      return;
+    }
+    const contact = response && response.responseUnsafe && response.responseUnsafe.contact;
+    const num = contact && contact.phone_number;
+    if (num){
+      // Telegram kadang kirim tanpa "+" di depan -- rapikan supaya konsisten.
+      document.getElementById('phone').value = num.startsWith('+') ? num : ('+'+num);
+      hint.textContent = 'Terisi dari Telegram -- boleh diedit kalau nomor ini beda dari yang aktif dipakai.';
+      hint.style.color = 'var(--moss)';
+    } else {
+      hint.textContent = 'Gagal mengambil nomor -- isi manual di atas.';
+    }
+  });
+}
 
 function goStep(n){
   if (n === 2 && !document.getElementById('phone').value.trim()){
@@ -190,7 +221,7 @@ const sampleCtx = sampleCanvas.getContext('2d', {willReadFrequently:true});
 
 async function startCam(){
   try{
-    stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:15}}});
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}, width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:15}}});
   }catch(e){ alert('Tidak bisa mengakses kamera: '+e.message); return; }
   const video = document.getElementById('video');
   video.srcObject = stream;
