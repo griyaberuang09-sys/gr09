@@ -89,7 +89,7 @@ def _check_secret(token: str):
 
 # ---------- Halaman Mini App ----------
 
-@app.get("/telegram_checkin", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/telegram-checkin", response_class=HTMLResponse, include_in_schema=False)
 def telegram_checkin_page():
     path = BASE_DIR / "telegram_checkin.html"
     # WebView Telegram (terutama di iOS) cenderung cache halaman ini dengan
