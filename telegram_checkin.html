@@ -76,11 +76,11 @@
   <!-- STEP 1: Nomor HP -->
   <div class="step active" id="step1">
     <div class="panel">
-      <label>Nomor HP (WhatsApp aktif) <span class="req">*</span></label>
-      <button type="button" class="btn ghost sm" id="requestContactBtn" style="margin-bottom:10px;" onclick="requestPhoneFromTelegram()">📱 Pakai Nomor Telegram Saya</button>
-      <input id="phone" inputmode="tel" placeholder="08xxxxxxxxxx">
-      <p class="small-muted" id="phoneHint" style="margin:-8px 0 14px;">Atau ketik manual di atas kalau nomor Telegram beda dengan yang aktif dipakai.</p>
-      <button class="btn" onclick="goStep(2)">Lanjut</button>
+      <label>Nomor HP (Telegram aktif) <span class="req">*</span></label>
+      <button type="button" class="btn" id="requestContactBtn" style="margin-bottom:10px;" onclick="requestPhoneFromTelegram()">📱 Bagikan Nomor Telegram</button>
+      <input id="phone" inputmode="tel" placeholder="08xxxxxxxxxx" readonly>
+      <p class="small-muted" id="phoneHint" style="margin:-8px 0 14px;">Tekan tombol di atas, nomor otomatis terisi dan lanjut ke foto KTP.</p>
+      <button class="btn ghost" id="manualNextBtn" style="display:none;" onclick="goStep(2)">Lanjut</button>
     </div>
   </div>
 
@@ -103,6 +103,7 @@
         <button class="btn ghost sm" id="camBtn" onclick="startCam()">Buka Kamera</button>
         <button class="btn sm" id="shotBtn" style="display:none;" disabled onclick="capture()">Ambil Foto</button>
       </div>
+      <p class="small-muted" style="margin:-6px 0 10px;">Kalau KTP tidak muat penuh di bingkai, jauhkan HP sedikit (coba ~25–30 cm) — beberapa HP kameranya sudah zoom secara default.</p>
       <button class="btn ghost sm" style="margin-bottom:10px;" onclick="document.getElementById('ktpFileInput').click()">📁 Unggah Foto dari Galeri/Kamera HP</button>
       <input type="file" id="ktpFileInput" accept="image/*" onchange="handleFileUpload(event)">
 
@@ -172,21 +173,32 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.getElementById('app').style.display = 'block';
 
-  // requestContact butuh Bot API 6.9+ -- kalau klien Telegram-nya lama,
-  // sembunyikan tombolnya saja, biarkan isi manual (tidak menghalangi apa pun).
+  // requestContact butuh Bot API 6.9+. Kalau klien Telegram-nya mendukung,
+  // nomor HP WAJIB dari situ (input dikunci readonly, tombol Lanjut manual
+  // disembunyikan). Fallback ke isi manual HANYA kalau klien benar-benar
+  // tidak mendukung requestContact sama sekali -- supaya tidak jadi jalan buntu.
   const supportsContact = tg && typeof tg.requestContact === 'function' &&
     (typeof tg.isVersionAtLeast !== 'function' || tg.isVersionAtLeast('6.9'));
   if (!supportsContact) {
     document.getElementById('requestContactBtn').style.display = 'none';
+    const phoneInput = document.getElementById('phone');
+    phoneInput.readOnly = false;
+    document.getElementById('phoneHint').textContent = 'Ketik nomor HP kamu di atas.';
+    document.getElementById('manualNextBtn').style.display = 'block';
   }
 });
 
 function requestPhoneFromTelegram(){
   if (!tg || typeof tg.requestContact !== 'function') return;
   const hint = document.getElementById('phoneHint');
+  const btn = document.getElementById('requestContactBtn');
+  btn.disabled = true;
+  btn.textContent = 'Menunggu konfirmasi Telegram…';
   tg.requestContact((shared, response) => {
+    btn.disabled = false;
+    btn.textContent = '📱 Bagikan Nomor Telegram';
     if (!shared){
-      hint.textContent = 'Tidak dibagikan -- isi manual di atas.';
+      hint.textContent = 'Dibatalkan -- tekan tombol lagi untuk mencoba ulang.';
       return;
     }
     const contact = response && response.responseUnsafe && response.responseUnsafe.contact;
@@ -194,10 +206,11 @@ function requestPhoneFromTelegram(){
     if (num){
       // Telegram kadang kirim tanpa "+" di depan -- rapikan supaya konsisten.
       document.getElementById('phone').value = num.startsWith('+') ? num : ('+'+num);
-      hint.textContent = 'Terisi dari Telegram -- boleh diedit kalau nomor ini beda dari yang aktif dipakai.';
+      hint.textContent = 'Nomor tersimpan, lanjut ke foto KTP…';
       hint.style.color = 'var(--moss)';
+      goStep(2); // otomatis lanjut, tidak perlu tekan tombol lagi
     } else {
-      hint.textContent = 'Gagal mengambil nomor -- isi manual di atas.';
+      hint.textContent = 'Gagal mengambil nomor -- coba tekan tombolnya lagi.';
     }
   });
 }
@@ -226,6 +239,18 @@ async function startCam(){
   const video = document.getElementById('video');
   video.srcObject = stream;
   await video.play().catch(()=>{});
+
+  // Banyak HP defaultnya kamera belakang sudah zoom >1x (bukan lensa
+  // paling lebar) -- di jarak dekat, KTP jadi kepotong cuma kelihatan
+  // sebagian. Paksa zoom minimum kalau browser/device mengizinkan.
+  try{
+    const track = stream.getVideoTracks()[0];
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (caps.zoom && typeof caps.zoom.min === 'number'){
+      await track.applyConstraints({advanced:[{zoom: caps.zoom.min}]});
+    }
+  }catch(e){ /* tidak semua device/browser dukung kontrol zoom -- diamkan saja */ }
+
   document.getElementById('ktpStage').style.display='block';
   document.getElementById('camBtn').style.display='none';
   document.getElementById('shotBtn').style.display='inline-block';
