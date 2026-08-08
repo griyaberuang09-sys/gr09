@@ -253,7 +253,9 @@ async function startCam(){
 
   document.getElementById('ktpStage').style.display='block';
   document.getElementById('camBtn').style.display='none';
-  document.getElementById('shotBtn').style.display='inline-block';
+  const shotBtn = document.getElementById('shotBtn');
+  shotBtn.style.display='inline-block';
+  shotBtn.disabled = false;
   document.getElementById('preview').style.display='none';
   stable = 0;
   cancelAnimationFrame(raf);
@@ -304,9 +306,12 @@ function tick(){
     const ready = sharpOk && glareOk && lumOk;
     guide.classList.toggle('ready', ready);
     dot.classList.toggle('ok', ready);
-    shotBtn.disabled = !ready || busy;
-    if (ready){ hint.textContent='Siap — tahan posisi.'; stable++; if(stable>=CFG.stableFrames && !counting && !busy){ counting=true; setTimeout(()=>{counting=false; if(guide.classList.contains('ready')) capture();}, 500);} }
-    else { stable=0; hint.textContent = !sharpOk?'Kurang tajam — dekatkan/perbaiki fokus.' : !glareOk?'Ada pantulan — miringkan kartu.' : m.lum<CFG.lumMin?'Terlalu gelap.':'Terlalu terang.'; }
+    // Cuma info, tidak lagi mengunci/otomatis jepret -- di sebagian HP
+    // zoom kamera belakangnya suka gagal diatur, jadi biar penyewa
+    // sendiri yang putuskan kapan tekan Ambil Foto.
+    shotBtn.disabled = busy;
+    if (ready){ hint.textContent='Siap — tahan posisi.'; }
+    else { hint.textContent = !sharpOk?'Kurang tajam — dekatkan/perbaiki fokus.' : !glareOk?'Ada pantulan — miringkan kartu.' : m.lum<CFG.lumMin?'Terlalu gelap.':'Terlalu terang.'; }
   }
   raf = requestAnimationFrame(tick);
 }
