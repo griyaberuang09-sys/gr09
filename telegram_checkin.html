@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Isi Data KTP — Griya Beruang</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{
+    --bg: #0f1512; --panel: #161f1b; --panel-2: #1c2620; --line: #2a362f;
+    --text: #eef2ee; --muted: #8fa397; --moss: #6b8f71;
+    --honey: #d9a441; --honey-dim: #7a5f26; --danger: #c96a4f; --radius: 10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.5; padding:16px 14px 40px;
+  }
+  h1{font-size:18px; margin:0 0 2px;}
+  .sub{color:var(--muted); font-size:13px; margin:0 0 18px;}
+  .step{ display:none; }
+  .step.active{ display:block; }
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
+  label{ display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  input, select, textarea{
+    width:100%; background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    border-radius:7px; padding:11px 12px; font-size:15px; margin-bottom:14px; font-family:inherit;
+  }
+  input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--honey); }
+  .req{ color:var(--danger); }
+  .btn{
+    background:var(--honey); color:#1a1206; border:none; border-radius:8px;
+    padding:13px 18px; font-size:15px; font-weight:700; width:100%; cursor:pointer;
+  }
+  .btn:disabled{ background:var(--honey-dim); color:rgba(255,255,255,.4); }
+  .btn.ghost{ background:transparent; color:var(--text); border:1px solid var(--line); font-weight:600; }
+  .btn.sm{ padding:10px 14px; font-size:14px; }
+  .row{ display:flex; gap:8px; }
+  .row .btn{ flex:1; }
+
+  .ktp-stage{ position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:8px; overflow:hidden; margin-bottom:10px; }
+  .ktp-stage video{ width:100%; height:100%; object-fit:cover; display:block; }
+  .ktp-guide{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:84%; aspect-ratio:85.6/54; border-radius:6px; box-shadow:0 0 0 100vmax rgba(0,0,0,.55); pointer-events:none; }
+  .ktp-corner{ position:absolute; width:24px; height:24px; border:2.5px solid var(--honey-dim); transition:border-color .25s; }
+  .ktp-corner.tl{ top:-2px; left:-2px; border-right:0; border-bottom:0; border-radius:6px 0 0 0; }
+  .ktp-corner.tr{ top:-2px; right:-2px; border-left:0; border-bottom:0; border-radius:0 6px 0 0; }
+  .ktp-corner.bl{ bottom:-2px; left:-2px; border-right:0; border-top:0; border-radius:0 0 0 6px; }
+  .ktp-corner.br{ bottom:-2px; right:-2px; border-left:0; border-top:0; border-radius:0 0 6px 0; }
+  .ktp-guide.ready .ktp-corner{ border-color:var(--moss); }
+  .ktp-hint{ position:absolute; left:0; right:0; bottom:0; padding:8px 10px; background:linear-gradient(transparent,rgba(0,0,0,.85)); font-size:13px; color:#fff; display:flex; gap:7px; align-items:center; }
+  .ktp-hint .dot{ width:7px; height:7px; border-radius:50%; background:var(--honey); flex:none; }
+  .ktp-hint .dot.ok{ background:var(--moss); }
+  .ktp-preview{ width:100%; border-radius:8px; display:none; margin-bottom:10px; }
+  #ktpFileInput{ display:none; }
+
+  .status{ font-size:13px; padding:10px 12px; border-radius:8px; margin-bottom:14px; }
+  .status.info{ background:rgba(217,164,65,.1); color:var(--honey); border:1px solid rgba(217,164,65,.3); }
+  .status.ok{ background:rgba(107,143,113,.15); color:var(--moss); border:1px solid rgba(107,143,113,.3); }
+  .status.err{ background:rgba(201,106,79,.12); color:var(--danger); border:1px solid rgba(201,106,79,.3); }
+
+  .center{ text-align:center; padding:40px 10px; }
+  .center .icon{ font-size:44px; margin-bottom:10px; }
+</style>
+</head>
+<body>
+
+<div id="blockedNotice" class="status err" style="display:none;">
+  Halaman ini harus dibuka lewat tombol menu bot Telegram Griya Beruang, bukan browser biasa.
+</div>
+
+<div id="app" style="display:none;">
+  <h1>Isi Data KTP</h1>
+  <p class="sub">Griya Beruang — data ini akan direview admin sebelum check-in selesai.</p>
+
+  <!-- STEP 1: Nomor HP -->
+  <div class="step active" id="step1">
+    <div class="panel">
+      <label>Nomor HP (WhatsApp aktif) <span class="req">*</span></label>
+      <input id="phone" inputmode="tel" placeholder="08xxxxxxxxxx">
+      <button class="btn" onclick="goStep(2)">Lanjut</button>
+    </div>
+  </div>
+
+  <!-- STEP 2: Foto KTP -->
+  <div class="step" id="step2">
+    <div class="panel">
+      <label style="margin-bottom:10px;">Foto KTP</label>
+
+      <div class="ktp-stage" id="ktpStage" style="display:none;">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="ktp-guide" id="guide">
+          <span class="ktp-corner tl"></span><span class="ktp-corner tr"></span>
+          <span class="ktp-corner bl"></span><span class="ktp-corner br"></span>
+        </div>
+        <div class="ktp-hint"><span class="dot" id="dot"></span><span id="hintText">Posisikan KTP di dalam bingkai.</span></div>
+      </div>
+      <img id="preview" class="ktp-preview">
+
+      <div class="row" style="margin-bottom:10px;">
+        <button class="btn ghost sm" id="camBtn" onclick="startCam()">Buka Kamera</button>
+        <button class="btn sm" id="shotBtn" style="display:none;" disabled onclick="capture()">Ambil Foto</button>
+      </div>
+      <button class="btn ghost sm" style="margin-bottom:10px;" onclick="document.getElementById('ktpFileInput').click()">📁 Unggah Foto dari Galeri/Kamera HP</button>
+      <input type="file" id="ktpFileInput" accept="image/*" capture="environment" onchange="handleFileUpload(event)">
+
+      <p id="ocrStatus" class="status info" style="display:none;"></p>
+
+      <div class="row">
+        <button class="btn ghost" onclick="goStep(1)">Kembali</button>
+        <button class="btn" id="toStep3Btn" disabled onclick="goStep(3)">Lanjut</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: Review -->
+  <div class="step" id="step3">
+    <div class="panel">
+      <label>NIK <span class="req">*</span></label>
+      <input id="f_nik" inputmode="numeric" maxlength="16">
+      <label>Nama (sesuai KTP) <span class="req">*</span></label>
+      <input id="f_nama">
+      <label>Tempat Lahir</label>
+      <input id="f_tempat_lahir">
+      <label>Tanggal Lahir</label>
+      <input id="f_tgl_lahir" type="date">
+      <label>Jenis Kelamin</label>
+      <select id="f_jk"><option value="">—</option><option>LAKI-LAKI</option><option>PEREMPUAN</option></select>
+      <label>Alamat</label>
+      <textarea id="f_alamat" rows="2"></textarea>
+      <label>Kecamatan</label>
+      <input id="f_kecamatan">
+      <label>Kabupaten/Kota</label>
+      <input id="f_kabkota">
+      <label>Provinsi</label>
+      <input id="f_provinsi">
+
+      <p id="submitStatus" class="status err" style="display:none;"></p>
+      <div class="row">
+        <button class="btn ghost" onclick="goStep(2)">Kembali</button>
+        <button class="btn" id="submitBtn" onclick="submitAll()">Kirim</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4: Selesai -->
+  <div class="step" id="step4">
+    <div class="center">
+      <div class="icon">✅</div>
+      <h1>Terkirim</h1>
+      <p class="sub">Data kamu sudah diterima dan sedang menunggu persetujuan admin Griya Beruang. Kamu akan dihubungi setelah check-in disetujui.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const tg = window.Telegram && window.Telegram.WebApp;
+let initData = "";
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (tg) {
+    tg.ready(); tg.expand();
+    initData = tg.initData || "";
+  }
+  if (!initData) {
+    document.getElementById('blockedNotice').style.display = 'block';
+    document.getElementById('app').style.display = 'none';
+  } else {
+    document.getElementById('app').style.display = 'block';
+  }
+});
+
+function goStep(n){
+  if (n === 2 && !document.getElementById('phone').value.trim()){
+    alert('Isi nomor HP dulu.'); return;
+  }
+  if (n === 3 && !ktpBlob){
+    alert('Ambil atau unggah foto KTP dulu.'); return;
+  }
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step'+n).classList.add('active');
+}
+
+// ---------- Kamera live (versi ringkas dari panel admin) ----------
+const CFG = { guideWidthPct:0.84, cardAspect:85.6/54, sharpReady:130, glareMax:0.05, lumMin:55, lumMax:210, stableFrames:8, sampleWidth:300 };
+let stream=null, raf=null, stable=0, counting=false, busy=false, ktpBlob=null;
+const sampleCanvas = document.createElement('canvas');
+const sampleCtx = sampleCanvas.getContext('2d', {willReadFrequently:true});
+
+async function startCam(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:15}}});
+  }catch(e){ alert('Tidak bisa mengakses kamera: '+e.message); return; }
+  const video = document.getElementById('video');
+  video.srcObject = stream;
+  await video.play().catch(()=>{});
+  document.getElementById('ktpStage').style.display='block';
+  document.getElementById('camBtn').style.display='none';
+  document.getElementById('shotBtn').style.display='inline-block';
+  document.getElementById('preview').style.display='none';
+  stable = 0;
+  cancelAnimationFrame(raf);
+  tick();
+}
+function roiInVideo(vw, vh){
+  const stageAspect = 4/3, videoAspect = vw/vh;
+  let visW=vw, visH=vh, offX=0, offY=0;
+  if (videoAspect > stageAspect){ visW = vh*stageAspect; offX=(vw-visW)/2; }
+  else { visH = vw/stageAspect; offY=(vh-visH)/2; }
+  const w = visW*CFG.guideWidthPct, h = w/CFG.cardAspect;
+  return { x:offX+(visW-w)/2, y:offY+(visH-h)/2, w, h };
+}
+function analyse(video){
+  const vw=video.videoWidth, vh=video.videoHeight;
+  if(!vw) return null;
+  const roi = roiInVideo(vw, vh);
+  const w=CFG.sampleWidth, h=Math.round(w/CFG.cardAspect);
+  sampleCanvas.width=w; sampleCanvas.height=h;
+  sampleCtx.drawImage(video, roi.x, roi.y, roi.w, roi.h, 0, 0, w, h);
+  const px = sampleCtx.getImageData(0,0,w,h).data;
+  const g = new Float32Array(w*h);
+  let sum=0, hot=0;
+  for(let i=0,p=0;i<px.length;i+=4,p++){
+    const y=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];
+    g[p]=y; sum+=y; if(y>246) hot++;
+  }
+  const lum=sum/(w*h), glare=hot/(w*h);
+  let ls=0, lss=0, n=0;
+  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){
+    const i=y*w+x, v=4*g[i]-g[i-1]-g[i+1]-g[i-w]-g[i+w];
+    ls+=v; lss+=v*v; n++;
+  }
+  const mean=ls/n;
+  return { sharp: lss/n-mean*mean, glare, lum };
+}
+function tick(){
+  const video = document.getElementById('video');
+  const m = analyse(video);
+  const guide = document.getElementById('guide');
+  const dot = document.getElementById('dot');
+  const hint = document.getElementById('hintText');
+  const shotBtn = document.getElementById('shotBtn');
+  if (m){
+    const sharpOk = m.sharp >= CFG.sharpReady;
+    const glareOk = m.glare <= CFG.glareMax;
+    const lumOk = m.lum >= CFG.lumMin && m.lum <= CFG.lumMax;
+    const ready = sharpOk && glareOk && lumOk;
+    guide.classList.toggle('ready', ready);
+    dot.classList.toggle('ok', ready);
+    shotBtn.disabled = !ready || busy;
+    if (ready){ hint.textContent='Siap — tahan posisi.'; stable++; if(stable>=CFG.stableFrames && !counting && !busy){ counting=true; setTimeout(()=>{counting=false; if(guide.classList.contains('ready')) capture();}, 500);} }
+    else { stable=0; hint.textContent = !sharpOk?'Kurang tajam — dekatkan/perbaiki fokus.' : !glareOk?'Ada pantulan — miringkan kartu.' : m.lum<CFG.lumMin?'Terlalu gelap.':'Terlalu terang.'; }
+  }
+  raf = requestAnimationFrame(tick);
+}
+function stopCam(){ cancelAnimationFrame(raf); if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+
+async function capture(){
+  if (busy) return;
+  busy = true;
+  const video = document.getElementById('video');
+  const vw=video.videoWidth, vh=video.videoHeight;
+  const roi = roiInVideo(vw, vh);
+  const c = document.createElement('canvas');
+  c.width = Math.round(roi.w); c.height = Math.round(roi.h);
+  c.getContext('2d').drawImage(video, roi.x, roi.y, roi.w, roi.h, 0, 0, c.width, c.height);
+  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
+  stopCam();
+  ktpBlob = blob;
+  const preview = document.getElementById('preview');
+  preview.src = URL.createObjectURL(blob);
+  preview.style.display = 'block';
+  document.getElementById('ktpStage').style.display='none';
+  document.getElementById('shotBtn').style.display='none';
+  document.getElementById('camBtn').style.display='inline-block';
+  document.getElementById('camBtn').textContent='Ambil Ulang';
+  await runOcr(blob);
+  busy = false;
+}
+
+async function handleFileUpload(evt){
+  const file = evt.target.files[0];
+  evt.target.value = '';
+  if (!file) return;
+  stopCam();
+  let blob;
+  try{
+    const bitmap = await createImageBitmap(file);
+    const maxW = 2200, scale = Math.min(1, maxW/bitmap.width);
+    const c = document.createElement('canvas');
+    c.width = Math.round(bitmap.width*scale); c.height = Math.round(bitmap.height*scale);
+    c.getContext('2d').drawImage(bitmap, 0, 0, c.width, c.height);
+    blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
+  }catch(e){ blob = file; }
+  ktpBlob = blob;
+  const preview = document.getElementById('preview');
+  preview.src = URL.createObjectURL(blob);
+  preview.style.display = 'block';
+  document.getElementById('ktpStage').style.display='none';
+  document.getElementById('shotBtn').style.display='none';
+  await runOcr(blob);
+}
+
+async function runOcr(blob){
+  const statusEl = document.getElementById('ocrStatus');
+  statusEl.style.display='block'; statusEl.className='status info';
+  statusEl.textContent = 'Membaca data KTP…';
+  try{
+    const fd = new FormData();
+    fd.append('init_data', initData);
+    fd.append('file', blob, 'ktp.jpg');
+    const res = await fetch('/api/telegram-app/ocr', {method:'POST', body: fd});
+    const d = await res.json();
+    if (!res.ok){ statusEl.className='status err'; statusEl.textContent = d.detail || 'OCR gagal, isi manual di langkah berikut.'; document.getElementById('toStep3Btn').disabled=false; return; }
+
+    document.getElementById('f_nik').value = d.nik || '';
+    document.getElementById('f_nama').value = d.nama || '';
+    document.getElementById('f_tempat_lahir').value = d.tempat_lahir || '';
+    document.getElementById('f_tgl_lahir').value = d.tgl_lahir || '';
+    document.getElementById('f_jk').value = d.jenis_kelamin || '';
+    document.getElementById('f_alamat').value = d.alamat || '';
+    document.getElementById('f_kecamatan').value = d.kecamatan_nik || '';
+    document.getElementById('f_kabkota').value = d.kabupaten_kota_nik || '';
+    document.getElementById('f_provinsi').value = d.provinsi_nik || '';
+
+    if (d.nik_valid){
+      statusEl.className='status ok';
+      statusEl.textContent = `Terbaca — NIK valid (${d.kecamatan_nik || d.provinsi_nik}). Cek ulang di langkah berikut sebelum kirim.`;
+    } else {
+      statusEl.className='status err';
+      statusEl.textContent = 'NIK belum terbaca dengan pasti — lengkapi manual di langkah berikut.';
+    }
+    document.getElementById('toStep3Btn').disabled = false;
+  }catch(e){
+    statusEl.className='status err';
+    statusEl.textContent = 'Gagal menghubungi server, isi manual di langkah berikut.';
+    document.getElementById('toStep3Btn').disabled = false;
+  }
+}
+
+// ---------- Kirim akhir ----------
+async function submitAll(){
+  const nik = document.getElementById('f_nik').value.replace(/\D/g,'');
+  const nama = document.getElementById('f_nama').value.trim();
+  const statusEl = document.getElementById('submitStatus');
+
+  if (nik.length !== 16 || !nama){
+    statusEl.style.display='block';
+    statusEl.textContent = 'NIK (16 digit) dan Nama wajib diisi dengan benar.';
+    return;
+  }
+
+  document.getElementById('submitBtn').disabled = true;
+  document.getElementById('submitBtn').textContent = 'Mengirim…';
+
+  let photoBase64 = null;
+  if (ktpBlob){
+    photoBase64 = await new Promise(res => {
+      const reader = new FileReader();
+      reader.onloadend = () => res(reader.result);
+      reader.readAsDataURL(ktpBlob);
+    });
+  }
+
+  const body = {
+    init_data: initData,
+    phone: document.getElementById('phone').value.trim(),
+    ktp_nik: nik,
+    ktp_nama: nama,
+    ktp_tempat_lahir: document.getElementById('f_tempat_lahir').value || null,
+    ktp_tgl_lahir: document.getElementById('f_tgl_lahir').value || null,
+    ktp_jenis_kelamin: document.getElementById('f_jk').value || null,
+    ktp_alamat: document.getElementById('f_alamat').value || null,
+    ktp_kecamatan: document.getElementById('f_kecamatan').value || null,
+    ktp_kabupaten_kota: document.getElementById('f_kabkota').value || null,
+    ktp_provinsi: document.getElementById('f_provinsi').value || null,
+    ktp_photo_base64: photoBase64,
+  };
+
+  try{
+    const res = await fetch('/api/telegram-app/submit', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const d = await res.json();
+    if (!res.ok){
+      statusEl.style.display='block';
+      statusEl.textContent = d.detail || 'Gagal mengirim, coba lagi.';
+      document.getElementById('submitBtn').disabled = false;
+      document.getElementById('submitBtn').textContent = 'Kirim';
+      return;
+    }
+    goStep(4);
+    if (tg) setTimeout(() => tg.close(), 2500);
+  }catch(e){
+    statusEl.style.display='block';
+    statusEl.textContent = 'Gagal menghubungi server, coba lagi.';
+    document.getElementById('submitBtn').disabled = false;
+    document.getElementById('submitBtn').textContent = 'Kirim';
+  }
+}
+</script>
+</body>
+</html>
