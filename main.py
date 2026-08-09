@@ -37,7 +37,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
-from ktp_core import run_ocr_pipeline, verify_telegram_init_data
+from ktp_core import run_ocr_pipeline, verify_telegram_init_data, decode_nik
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("GATEWAY_DATA_DIR", BASE_DIR / "data"))
@@ -128,6 +128,24 @@ async def telegram_app_ocr(
         return run_ocr_pipeline(content, strip_content)
     except Exception as e:
         raise HTTPException(500, f"OCR gagal: {e}")
+
+
+class NikDecodeBody(BaseModel):
+    init_data: str
+    nik: str
+
+
+@app.post("/api/telegram-app/nik-decode")
+def telegram_app_nik_decode(body: NikDecodeBody):
+    """Dipanggil begitu penyewa selesai mengetik/mengoreksi NIK secara
+    manual di Step 3 -- mengisi otomatis tanggal lahir, jenis kelamin,
+    kecamatan, kabupaten/kota, provinsi. Alamat TIDAK diisi dari sini --
+    NIK tidak menyimpan alamat jalan sama sekali, cuma kode wilayah
+    sampai level kecamatan."""
+    user = verify_telegram_init_data(body.init_data, BOT_TOKEN)
+    if not user:
+        raise HTTPException(401, "Verifikasi Telegram gagal — buka ulang lewat tombol menu bot.")
+    return decode_nik(body.nik)
 
 
 class SubmitBody(BaseModel):

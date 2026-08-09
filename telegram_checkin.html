@@ -39,7 +39,7 @@
   .row{ display:flex; gap:8px; }
   .row .btn{ flex:1; }
 
-  .ktp-stage{ position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:8px; overflow:hidden; margin-bottom:10px; }
+  .ktp-stage{ position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:8px; overflow:hidden; margin-bottom:10px; touch-action:none; }
   .ktp-stage video{ width:100%; height:100%; object-fit:cover; display:block; }
   .ktp-guide{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:84%; aspect-ratio:85.6/54; border-radius:6px; box-shadow:0 0 0 100vmax rgba(0,0,0,.55); pointer-events:none; }
   .ktp-corner{ position:absolute; width:24px; height:24px; border:2.5px solid var(--honey-dim); transition:border-color .25s; }
@@ -96,6 +96,7 @@
           <span class="ktp-corner bl"></span><span class="ktp-corner br"></span>
         </div>
         <div class="ktp-hint"><span class="dot" id="dot"></span><span id="hintText">Posisikan KTP di dalam bingkai.</span></div>
+        <div id="zoomBadge" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,.6); color:#fff; font-size:12px; padding:3px 8px; border-radius:99px; display:none;">1.0x</div>
       </div>
       <img id="preview" class="ktp-preview">
 
@@ -120,7 +121,8 @@
   <div class="step" id="step3">
     <div class="panel">
       <label>NIK <span class="req">*</span></label>
-      <input id="f_nik" inputmode="numeric" maxlength="16">
+      <input id="f_nik" inputmode="numeric" maxlength="16" oninput="onNikInput(this.value)">
+      <p class="small-muted" id="nikDecodeHint" style="margin:-8px 0 14px;"></p>
       <label>Nama (sesuai KTP) <span class="req">*</span></label>
       <input id="f_nama">
       <label>Tempat Lahir</label>
@@ -242,12 +244,19 @@ async function startCam(){
 
   // Banyak HP defaultnya kamera belakang sudah zoom >1x (bukan lensa
   // paling lebar) -- di jarak dekat, KTP jadi kepotong cuma kelihatan
-  // sebagian. Paksa zoom minimum kalau browser/device mengizinkan.
+  // sebagian. Paksa zoom minimum dulu, lalu izinkan pinch manual kalau
+  // device/browser mendukung kontrol zoom.
+  zoomCaps = null; currentTrack = null;
   try{
     const track = stream.getVideoTracks()[0];
     const caps = track.getCapabilities ? track.getCapabilities() : {};
     if (caps.zoom && typeof caps.zoom.min === 'number'){
-      await track.applyConstraints({advanced:[{zoom: caps.zoom.min}]});
+      currentTrack = track;
+      zoomCaps = caps.zoom;
+      currentZoom = caps.zoom.min;
+      await track.applyConstraints({advanced:[{zoom: currentZoom}]});
+      setupPinchZoom();
+      updateZoomBadge();
     }
   }catch(e){ /* tidak semua device/browser dukung kontrol zoom -- diamkan saja */ }
 
@@ -260,6 +269,51 @@ async function startCam(){
   stable = 0;
   cancelAnimationFrame(raf);
   tick();
+}
+
+// ---------- Pinch-to-zoom ----------
+let zoomCaps=null, currentTrack=null, currentZoom=1, pinchStartDist=0, pinchStartZoom=1, zoomBusy=false;
+
+function updateZoomBadge(){
+  const badge = document.getElementById('zoomBadge');
+  if (!zoomCaps){ badge.style.display='none'; return; }
+  badge.style.display='block';
+  badge.textContent = currentZoom.toFixed(1)+'x';
+}
+
+function pinchDistance(touches){
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+
+function setupPinchZoom(){
+  const stage = document.getElementById('ktpStage');
+  stage.ontouchstart = (e) => {
+    if (e.touches.length === 2 && zoomCaps){
+      pinchStartDist = pinchDistance(e.touches);
+      pinchStartZoom = currentZoom;
+      e.preventDefault();
+    }
+  };
+  stage.ontouchmove = (e) => {
+    if (e.touches.length === 2 && zoomCaps && pinchStartDist > 0){
+      e.preventDefault();
+      if (zoomBusy) return; // hindari applyConstraints menumpuk saat jari masih gerak cepat
+      const scale = pinchDistance(e.touches) / pinchStartDist;
+      let z = pinchStartZoom * scale;
+      z = Math.max(zoomCaps.min, Math.min(zoomCaps.max, z));
+      currentZoom = z;
+      updateZoomBadge();
+      zoomBusy = true;
+      currentTrack.applyConstraints({advanced:[{zoom: z}]})
+        .catch(()=>{})
+        .finally(()=>{ zoomBusy = false; });
+    }
+  };
+  stage.ontouchend = (e) => {
+    if (e.touches.length < 2) pinchStartDist = 0;
+  };
 }
 function roiInVideo(vw, vh){
   const stageAspect = 4/3, videoAspect = vw/vh;
@@ -361,6 +415,55 @@ async function handleFileUpload(evt){
   document.getElementById('ktpStage').style.display='none';
   document.getElementById('shotBtn').style.display='none';
   await runOcr(blob);
+}
+
+// ---------- Isi otomatis dari NIK (kalau diketik/dikoreksi manual di Step 3) ----------
+// NIK cuma menyimpan kode wilayah s.d. kecamatan + tanggal lahir + jenis
+// kelamin -- TIDAK menyimpan alamat jalan/RT/RW, jadi field alamat
+// sengaja tidak disentuh di sini.
+let nikDecodeTimer = null;
+function onNikInput(val){
+  clearTimeout(nikDecodeTimer);
+  const digits = (val||'').replace(/\D/g,'');
+  const hint = document.getElementById('nikDecodeHint');
+  if (digits.length !== 16){
+    hint.textContent = digits.length ? `${digits.length}/16 digit` : '';
+    return;
+  }
+  hint.textContent = 'Memeriksa NIK…';
+  nikDecodeTimer = setTimeout(() => decodeNik(digits), 350);
+}
+
+async function decodeNik(nik){
+  const hint = document.getElementById('nikDecodeHint');
+  try{
+    const res = await fetch('/api/telegram-app/nik-decode', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({init_data: initData, nik: nik}),
+    });
+    const d = await res.json();
+    if (!res.ok){ hint.textContent = d.detail || 'Gagal memeriksa NIK.'; return; }
+
+    if (d.tanggal_lahir) document.getElementById('f_tgl_lahir').value = d.tanggal_lahir;
+    if (d.jenis_kelamin) document.getElementById('f_jk').value = d.jenis_kelamin;
+    if (d.kecamatan) document.getElementById('f_kecamatan').value = d.kecamatan;
+    if (d.kabupaten_kota) document.getElementById('f_kabkota').value = d.kabupaten_kota;
+    if (d.provinsi) document.getElementById('f_provinsi').value = d.provinsi;
+
+    if (d.valid && d.kecamatan){
+      hint.textContent = `NIK valid — ${d.kecamatan}, ${d.kabupaten_kota} (${d.usia} th). Alamat tetap perlu diisi manual.`;
+      hint.style.color = 'var(--moss)';
+    } else if (d.valid){
+      hint.textContent = `NIK valid, kecamatan tidak ada di tabel wilayah. ${(d.catatan||[]).join(' ')}`;
+      hint.style.color = 'var(--honey)';
+    } else {
+      hint.textContent = 'NIK tidak valid: ' + (d.catatan||[]).join(' ');
+      hint.style.color = 'var(--danger)';
+    }
+  }catch(e){
+    hint.textContent = 'Gagal menghubungi server.';
+    hint.style.color = 'var(--danger)';
+  }
 }
 
 async function runOcr(blob){
