@@ -1,11 +1,24 @@
 # Railway: pilih "Dockerfile" sebagai build method (bukan Nixpacks otomatis).
 FROM python:3.12-slim
 
-# libgomp1 WAJIB -- PaddlePaddle butuh runtime OpenMP ini, python:3.12-slim
-# tidak menyertakannya secara default (beda dari base image yang lebih besar).
-# Tanpa ini, "import paddle" gagal diam-diam saat runtime, bukan saat build.
+# Library sistem yang WAJIB tapi TIDAK disertakan python:3.12-slim:
+#   - libgomp1        : runtime OpenMP, dibutuhkan PaddlePaddle
+#   - libgl1          : libGL.so.1, dibutuhkan OpenCV (dipakai internal oleh
+#                        PaddleOCR/PaddleX) meski jalan headless tanpa GUI
+#   - libglib2.0-0     : libgthread-2.0.so.0, biasanya jadi error BERIKUTNYA
+#                        setelah libGL diperbaiki -- ditambah sekalian di sini
+#                        supaya tidak muncul lagi masalah serupa gelombang kedua
+# Tanpa paket-paket ini, "import paddle"/"import cv2" gagal diam-diam saat
+# runtime (request pertama kena error), bukan saat build/deploy.
+#
+# CATATAN kalau baris di bawah GAGAL BUILD tepat di libglib2.0-0: sebagian
+# rilis Debian/Ubuntu terbaru mengganti namanya jadi "libglib2.0-0t64"
+# (transisi 64-bit time_t). Kalau itu terjadi, ganti baris libglib2.0-0
+# di bawah jadi libglib2.0-0t64, lalu redeploy.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
