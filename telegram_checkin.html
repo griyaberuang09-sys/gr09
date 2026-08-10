@@ -100,13 +100,15 @@
       </div>
       <img id="preview" class="ktp-preview">
 
+      <button class="btn" style="margin-bottom:8px;" onclick="document.getElementById('ktpFileInput').click()">📁 Unggah Foto KTP (disarankan)</button>
+      <p class="small-muted" style="margin:-4px 0 12px;">Ini membuka kamera ASLI HP kamu — biasanya otomatis pakai lensa lebar yang pas buat KTP, beda dengan mode kamera di bawah yang kadang kezoom terus.</p>
+      <input type="file" id="ktpFileInput" accept="image/*" onchange="handleFileUpload(event)">
+
       <div class="row" style="margin-bottom:10px;">
-        <button class="btn ghost sm" id="camBtn" onclick="startCam()">Buka Kamera</button>
+        <button class="btn ghost sm" id="camBtn" onclick="startCam()">Atau pakai kamera di sini</button>
         <button class="btn sm" id="shotBtn" style="display:none;" disabled onclick="capture()">Ambil Foto</button>
       </div>
-      <p class="small-muted" style="margin:-6px 0 10px;">Kalau KTP tidak muat penuh di bingkai, jauhkan HP sedikit (coba ~25–30 cm) — beberapa HP kameranya sudah zoom secara default.</p>
-      <button class="btn ghost sm" style="margin-bottom:10px;" onclick="document.getElementById('ktpFileInput').click()">📁 Unggah Foto dari Galeri/Kamera HP</button>
-      <input type="file" id="ktpFileInput" accept="image/*" onchange="handleFileUpload(event)">
+      <p class="small-muted" style="margin:-6px 0 10px;">Kalau KTP tidak muat penuh di bingkai, jauhkan HP sedikit (coba ~25–30 cm) atau cubit dua jari di layar buat zoom out — kalau masih kezoom terus, pakai tombol Unggah Foto di atas.</p>
 
       <p id="ocrStatus" class="status info" style="display:none;"></p>
 
@@ -236,7 +238,29 @@ const sampleCtx = sampleCanvas.getContext('2d', {willReadFrequently:true});
 
 async function startCam(){
   try{
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}, width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:15}}});
+    // Langkah 1: minta izin dulu dengan constraint umum -- enumerateDevices()
+    // TIDAK memberi label kamera (termasuk info ultra-wide) sebelum izin
+    // diberikan, jadi tidak bisa cari kamera lebar SEBELUM langkah ini.
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:"environment"}, width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:15}}
+    });
+
+    // Langkah 2: sekarang label sudah terisi -- cek apakah ada device kamera
+    // FISIK terpisah yang labelnya mengindikasikan lensa ultra-wide (mis.
+    // "0.5x", "ultra wide"). Ini beda dari sekadar "zoom minimum" di bawah --
+    // kalau ketemu, pindah ke device itu karena FOV-nya benar-benar lebih
+    // lebar secara optik, bukan cuma software zoom di lensa yang sama.
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const wide = devices.find(d => d.kind === 'videoinput' && /0\.5|ultra.?wide|wide.?angle/i.test(d.label));
+      if (wide){
+        const widerStream = await navigator.mediaDevices.getUserMedia({
+          video:{deviceId:{exact: wide.deviceId}, width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:15}}
+        });
+        stream.getTracks().forEach(t => t.stop());
+        stream = widerStream;
+      }
+    }catch(e){ /* tidak ketemu/gagal pindah -- tetap pakai stream awal, tidak fatal */ }
   }catch(e){ alert('Tidak bisa mengakses kamera: '+e.message); return; }
   const video = document.getElementById('video');
   video.srcObject = stream;
@@ -245,7 +269,12 @@ async function startCam(){
   // Banyak HP defaultnya kamera belakang sudah zoom >1x (bukan lensa
   // paling lebar) -- di jarak dekat, KTP jadi kepotong cuma kelihatan
   // sebagian. Paksa zoom minimum dulu, lalu izinkan pinch manual kalau
-  // device/browser mendukung kontrol zoom.
+  // device/browser mendukung kontrol zoom. CATATAN: ini cuma bisa mundur
+  // ke batas lensa yang SEDANG AKTIF (biasanya lensa utama ~1x) -- kalau
+  // di atas tidak ketemu device ultra-wide terpisah, zoom minimum di sini
+  // TETAP TIDAK BISA melampaui FOV fisik lensa utama. Kalau masih terlalu
+  // zoom setelah ini, satu-satunya jalan yang pasti adalah tombol Unggah
+  // Foto (pakai aplikasi kamera asli HP, bukan API browser).
   zoomCaps = null; currentTrack = null;
   try{
     const track = stream.getVideoTracks()[0];
