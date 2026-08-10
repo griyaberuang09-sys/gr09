@@ -4,21 +4,18 @@ Telegram WebApp initData. Dipakai oleh DUA proyek terpisah:
 
   1. app.py (server lokal, di belakang WireGuard) — untuk OCR di menu
      Check-in Penyewa (webcam/unggah admin) dan validasi NIK manual.
+     Bisa pakai engine="paddleocr" (opsional, lihat config.json).
   2. telegram_gateway/main.py (di Railway, publik) — untuk OCR & validasi
-     saat penghuni submit KTP lewat Mini App Telegram.
+     saat penghuni submit KTP lewat Mini App Telegram. SELALU pakai
+     engine="tesseract" (default) — paddleocr sengaja tidak dipasang di
+     sini karena risiko OOM di container beresource terbatas.
 
-Keduanya SEKARANG SAMA PERSIS (Agustus 2026) — sama-sama PaddleOCR,
-Tesseract sudah dihapus total dari file ini karena terbukti gagal baca
-KTP ber-hologram. Kalau salah satu diubah, salin ulang ke folder satunya
-supaya hasil decode NIK & parsing OCR tidak pernah berbeda.
-
-CATATAN RISIKO (sengaja diterima, lihat main.py di telegram_gateway/):
-PaddleOCR 3.x punya laporan kebocoran memori kronis di CPU (banyak issue
-GitHub 2021-2026) -- di server lokal ini bukan masalah besar (restart
-manual sesekali cukup), tapi di Railway (proses jalan terus-menerus)
-risikonya nyata. Mitigasinya ada di telegram_gateway/main.py: restart
-otomatis berkala. Kalau Railway tiba-tiba restart sendiri, itu memang
-disengaja, bukan bug.
+PENTING: file ini harus identik di kedua tempat. Kalau salah satu diubah,
+salin ulang ke folder satunya — supaya hasil decode NIK & parsing OCR
+tidak pernah berbeda antara server lokal dan gateway publik. File ini
+AMAN disalin apa adanya ke Railway meski berisi kode PaddleOCR, karena
+importnya lazy (di dalam fungsi) — tidak akan pernah dieksekusi selama
+Railway tetap memanggil run_ocr_pipeline(..., engine="tesseract").
 """
 
 from __future__ import annotations
@@ -258,13 +255,10 @@ def _to_iso_date(raw: str) -> Optional[str]:
 # KTP terlalu padat untuk pipeline threshold klasik Tesseract. PaddleOCR
 # (deep learning) terbukti bisa membaca kartu yang sama dengan akurat.
 #
-# CATATAN PENTING (Agustus 2026): file ini SEKARANG SAMA di server lokal
-# maupun telegram_gateway/ (Railway) -- keduanya pakai PaddleOCR. Ini
-# keputusan SADAR meski PaddleOCR 3.x punya laporan kebocoran memori
-# kronis di banyak versi (RAM naik terus tiap request, tidak pernah
-# turun, akhirnya di-OOM-kill) -- lihat main.py di telegram_gateway/
-# untuk mitigasinya (restart otomatis berkala). Kalau Railway sering
-# crash, itu memang risiko yang sudah diketahui, bukan bug baru.
+# CATATAN PENTING: file ini SEKARANG BERBEDA dari
+# telegram_gateway/ktp_core.py di Railway -- itu TETAP pakai Tesseract
+# (lihat catatan risiko OOM PaddleOCR di CPU beresource terbatas).
+# JANGAN salin file ini ke folder telegram_gateway/.
 
 _paddle_engine = None  # singleton, di-load sekali saat request OCR pertama
 
@@ -278,6 +272,14 @@ def _get_paddle_engine():
             use_doc_orientation_classify=True,  # foto KTP dari HP sering rotasi 90/180/270 -- ini otomatis meluruskan (download 1 model kecil tambahan saat pertama jalan)
             use_doc_unwarping=False,
             use_textline_orientation=True,
+            # oneDNN/MKL-DNN aktif secara default di versi ini (DEFAULT_ENABLE_MKLDNN=True
+            # di paddleocr/_constants.py, sudah dicek langsung ke source code), TAPI
+            # konverter atribut PIR-nya belum mendukung sebagian tipe atribut operator
+            # yang dipakai model PP-OCRv5 ini -- selalu gagal dengan error
+            # "ConvertPirAttribute2RuntimeAttribute not support [...]" di setiap
+            # panggilan OCR. Matikan supaya jatuh ke jalur eksekusi standar (sedikit
+            # lebih lambat, tapi jauh lebih kompatibel & TERBUKTI tidak crash).
+            enable_mkldnn=False,
         )
     return _paddle_engine
 
