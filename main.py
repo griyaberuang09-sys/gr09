@@ -33,7 +33,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -48,6 +48,30 @@ BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GATEWAY_SECRET = os.environ.get("GATEWAY_SECRET", "")
 
 app = FastAPI(title="Griya Beruang — Telegram Mini App Gateway")
+
+# ---------- Katup pengaman kebocoran memori PaddleOCR ----------
+# PaddleOCR 3.x punya laporan kebocoran memori kronis di CPU (banyak issue
+# GitHub 2021-2026, RAM naik terus tiap request diproses & tidak pernah
+# turun lagi, akhirnya di-OOM-kill sistem). Ini keputusan SADAR menerima
+# risiko itu (lihat percakapan admin) -- mitigasinya: proses keluar sendiri
+# setelah N kali OCR, supaya restart policy Railway menghidupkan proses
+# baru dengan memori bersih SEBELUM sempat OOM tak terduga.
+#
+# WAJIB: di Railway, Settings -> pastikan Restart Policy = "On Failure"
+# (bukan "Never") dengan max retries yang cukup tinggi -- exit code sengaja
+# dibuat non-zero (bukan exit(0)) supaya restart ini pasti dianggap "failure"
+# dan dipicu, terlepas dari policy default platform.
+_OCR_REQUEST_COUNT = 0
+_MAX_OCR_REQUESTS_BEFORE_RESTART = int(os.environ.get("MAX_OCR_BEFORE_RESTART", "15"))
+
+
+def _bump_ocr_count_and_maybe_restart():
+    global _OCR_REQUEST_COUNT
+    _OCR_REQUEST_COUNT += 1
+    if _OCR_REQUEST_COUNT >= _MAX_OCR_REQUESTS_BEFORE_RESTART:
+        print(f"[katup-pengaman] {_OCR_REQUEST_COUNT} request OCR tercapai -- "
+              f"restart proses sengaja utk cegah kebocoran memori menumpuk.", flush=True)
+        os._exit(1)  # non-zero sengaja, lihat catatan di atas
 
 
 @contextmanager
@@ -114,6 +138,7 @@ def root():
 
 @app.post("/api/telegram-app/ocr")
 async def telegram_app_ocr(
+    background_tasks: BackgroundTasks,
     init_data: str = Form(...),
     file: UploadFile = File(...),
     nik_strip: Optional[UploadFile] = File(None),
@@ -125,9 +150,16 @@ async def telegram_app_ocr(
     content = await file.read()
     strip_content = await nik_strip.read() if nik_strip is not None else None
     try:
-        return run_ocr_pipeline(content, strip_content)
+        result = run_ocr_pipeline(content, strip_content)
     except Exception as e:
         raise HTTPException(500, f"OCR gagal: {e}")
+
+    # Katup pengaman kebocoran memori PaddleOCR (lihat catatan di ktp_core.py):
+    # dijadwalkan SETELAH response ini terkirim, supaya permintaan yang sedang
+    # diproses tidak terpotong -- restart policy Railway (harus "on failure")
+    # akan otomatis menghidupkan proses baru dengan memori bersih.
+    background_tasks.add_task(_bump_ocr_count_and_maybe_restart)
+    return result
 
 
 class NikDecodeBody(BaseModel):
@@ -231,4 +263,8 @@ def gateway_ack(body: AckBody, token: str = ""):
 def health():
     with db() as conn:
         n = conn.execute("SELECT COUNT(*) c FROM pending_submissions").fetchone()["c"]
-    return {"ok": True, "bot_token_set": bool(BOT_TOKEN), "secret_set": bool(GATEWAY_SECRET), "pending_count": n}
+    return {
+        "ok": True, "bot_token_set": bool(BOT_TOKEN), "secret_set": bool(GATEWAY_SECRET),
+        "pending_count": n, "ocr_requests_since_start": _OCR_REQUEST_COUNT,
+        "ocr_restart_threshold": _MAX_OCR_REQUESTS_BEFORE_RESTART,
+    }

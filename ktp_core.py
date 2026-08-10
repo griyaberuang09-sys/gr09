@@ -7,9 +7,18 @@ Telegram WebApp initData. Dipakai oleh DUA proyek terpisah:
   2. telegram_gateway/main.py (di Railway, publik) — untuk OCR & validasi
      saat penghuni submit KTP lewat Mini App Telegram.
 
-PENTING: file ini harus identik di kedua tempat. Kalau salah satu diubah,
-salin ulang ke folder satunya — supaya hasil decode NIK & parsing OCR
-tidak pernah berbeda antara server lokal dan gateway publik.
+Keduanya SEKARANG SAMA PERSIS (Agustus 2026) — sama-sama PaddleOCR,
+Tesseract sudah dihapus total dari file ini karena terbukti gagal baca
+KTP ber-hologram. Kalau salah satu diubah, salin ulang ke folder satunya
+supaya hasil decode NIK & parsing OCR tidak pernah berbeda.
+
+CATATAN RISIKO (sengaja diterima, lihat main.py di telegram_gateway/):
+PaddleOCR 3.x punya laporan kebocoran memori kronis di CPU (banyak issue
+GitHub 2021-2026) -- di server lokal ini bukan masalah besar (restart
+manual sesekali cukup), tapi di Railway (proses jalan terus-menerus)
+risikonya nyata. Mitigasinya ada di telegram_gateway/main.py: restart
+otomatis berkala. Kalau Railway tiba-tiba restart sendiri, itu memang
+disengaja, bukan bug.
 """
 
 from __future__ import annotations
@@ -25,7 +34,6 @@ import urllib.parse
 from datetime import date, datetime
 from typing import Optional
 
-import pytesseract
 from PIL import Image, ImageOps
 
 # ---------- Decode NIK ----------
@@ -71,6 +79,102 @@ def _load_wilayah_kec():
 
 _load_wilayah_kec()
 
+# Tabel desa/kelurahan (83.466 baris), dikelompokkan per kode kecamatan (6
+# digit, sama dengan _WILAYAH_KEC di atas). Dipakai untuk MENCOCOKKAN --
+# bukan mengganti buta -- hasil OCR kolom Kel/Desa terhadap nama desa
+# ASLI yang benar-benar ada di kecamatan itu (yang kecamatannya sendiri
+# sudah pasti benar dari NIK). Kandidatnya sengaja dibatasi cuma desa
+# dalam SATU kecamatan yang sama (biasanya 5-20 desa) supaya pencocokan
+# akurat -- bukan dicocokkan ke 83 ribu desa se-Indonesia yang rawan
+# salah pilih desa dengan nama mirip di kecamatan lain.
+# Sumber sama seperti wilayah_nik.csv (Kepmendagri, bundel cahyadsn/wilayah).
+_WILAYAH_DESA_PER_KEC: dict[str, list] = {}
+
+
+def _load_wilayah_desa():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wilayah_desa.csv")
+    if not os.path.exists(path):
+        return
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            _WILAYAH_DESA_PER_KEC.setdefault(row["kode_kec"], []).append(row["nama_desa"])
+
+
+_load_wilayah_desa()
+
+
+def _fuzzy_match(ocr_text: Optional[str], candidates: list, min_ratio: float = 0.55) -> dict:
+    """Cocokkan teks OCR terhadap daftar kandidat, kembalikan hasil terbaik
+    + skor. TIDAK PERNAH mengembalikan 'matched' kalau skornya di bawah
+    ambang -- supaya pemanggil tidak menimpa data asli dengan tebakan
+    yang tidak yakin."""
+    out = {"matched": None, "score": 0.0}
+    if not ocr_text or not candidates:
+        return out
+    clean = re.sub(r"[^A-Z]", "", ocr_text.upper())
+    if not clean:
+        return out
+    import difflib
+    best_name, best_score = None, 0.0
+    for name in candidates:
+        name_clean = re.sub(r"[^A-Z]", "", name.upper())
+        score = difflib.SequenceMatcher(None, clean, name_clean).ratio()
+        if score > best_score:
+            best_name, best_score = name, score
+    out["score"] = round(best_score, 3)
+    if best_score >= min_ratio:
+        out["matched"] = best_name
+    return out
+
+
+# 6 agama resmi diakui negara -- daftar tertutup, tidak berubah, aman
+# dipakai koreksi otomatis dengan yakin.
+_AGAMA_RESMI = ["ISLAM", "KRISTEN", "KATOLIK", "HINDU", "BUDDHA", "KONGHUCU"]
+
+# 4 kategori status perkawinan standar KTP -- daftar tertutup, aman.
+_STATUS_PERKAWINAN_RESMI = ["BELUM KAWIN", "KAWIN", "CERAI HIDUP", "CERAI MATI"]
+
+# CATATAN JUJUR: ini BUKAN daftar 99/106 kategori resmi Permendagri --
+# saya tidak menemukan daftar lengkap terverifikasi dari sumber yang bisa
+# diakses (situs pemerintah/berita yang punya daftar itu memblokir akses
+# otomatis). Ini cuma nilai yang PALING SERING muncul di KTP dalam
+# praktiknya, jadi ambang kecocokannya dibuat lebih tinggi (0.62, bukan
+# 0.55) supaya lebih hati-hati -- kalau pekerjaan penyewa tidak ada di
+# sini, teks OCR asli tetap dipertahankan apa adanya, tidak dipaksa cocok
+# ke salah satu daftar ini.
+_PEKERJAAN_UMUM = [
+    "BELUM/TIDAK BEKERJA", "MENGURUS RUMAH TANGGA", "PELAJAR/MAHASISWA",
+    "PEGAWAI NEGERI SIPIL", "TENTARA NASIONAL INDONESIA", "KEPOLISIAN RI",
+    "PERDAGANGAN", "PETANI/PEKEBUN", "PETERNAK", "NELAYAN/PERIKANAN",
+    "INDUSTRI", "KONSTRUKSI", "TRANSPORTASI", "KARYAWAN SWASTA",
+    "KARYAWAN BUMN", "KARYAWAN BUMD", "KARYAWAN HONORER", "BURUH HARIAN LEPAS",
+    "BURUH TANI/PERKEBUNAN", "PEMBANTU RUMAH TANGGA", "TUKANG CUKUR",
+    "TUKANG LISTRIK", "TUKANG BATU", "TUKANG KAYU", "TUKANG SOL SEPATU",
+    "TUKANG LAS/PANDAI BESI", "TUKANG JAHIT", "TUKANG GIGI", "PENATA RIAS",
+    "PENATA BUSANA", "PENATA RAMBUT", "MEKANIK", "SENIMAN", "TABIB",
+    "PARANORMAL", "PERANCANG BUSANA", "PENTERJEMAH", "IMAM MASJID",
+    "PENDETA", "PASTOR", "WARTAWAN", "USTADZ/MUBALIGH", "JURU MASAK",
+    "PROMOTOR ACARA", "ANGGOTA DPR-RI", "ANGGOTA DPD", "ANGGOTA BPK",
+    "PRESIDEN", "WAKIL PRESIDEN", "ANGGOTA MAHKAMAH KONSTITUSI",
+    "ANGGOTA KABINET/KEMENTERIAN", "DUTA BESAR", "GUBERNUR", "WAKIL GUBERNUR",
+    "BUPATI", "WAKIL BUPATI", "WALIKOTA", "WAKIL WALIKOTA", "DOSEN", "GURU",
+    "PILOT", "PENGACARA", "NOTARIS", "ARSITEK", "AKUNTAN", "KONSULTAN",
+    "DOKTER", "BIDAN", "PERAWAT", "APOTEKER", "PSIKIATER/PSIKOLOG",
+    "PENYIAR TELEVISI", "PENYIAR RADIO", "PELAUT", "PENELITI", "SOPIR",
+    "PIALANG", "PARANJI", "PERANCANG BUSANA", "PENATA RIAS", "PEDAGANG",
+    "PERANGKAT DESA", "KEPALA DESA", "BIARAWATI", "WIRASWASTA",
+]
+
+
+def _match_kel_desa(ocr_text: Optional[str], kode_kec: Optional[str], min_ratio: float = 0.55) -> dict:
+    """Cocokkan teks OCR kolom Kel/Desa terhadap daftar desa ASLI di
+    kecamatan yang sudah pasti benar (dari NIK) -- kandidatnya sengaja
+    dibatasi ke SATU kecamatan, jadi lebih akurat dari _fuzzy_match biasa."""
+    candidates = _WILAYAH_DESA_PER_KEC.get(kode_kec, []) if kode_kec else []
+    result = _fuzzy_match(ocr_text, candidates, min_ratio=min_ratio)
+    result["candidates"] = candidates
+    return result
+
 
 def decode_nik(nik: Optional[str]) -> dict:
     """Bongkar NIK 16 digit. Tanggal lahir perempuan ditambah 40 pada
@@ -79,7 +183,7 @@ def decode_nik(nik: Optional[str]) -> dict:
     tabel wilayah bundel (kode 6 digit pertama NIK = kode kecamatan)."""
     out = {
         "valid": False, "provinsi": None, "kabupaten_kota": None, "kecamatan": None,
-        "jenis_kelamin": None, "tanggal_lahir": None, "usia": None, "catatan": [],
+        "kode_kecamatan": None, "jenis_kelamin": None, "tanggal_lahir": None, "usia": None, "catatan": [],
     }
     digits = re.sub(r"\D", "", nik or "")
     if len(digits) != 16:
@@ -90,6 +194,7 @@ def decode_nik(nik: Optional[str]) -> dict:
     hard_fail = False
     prov = digits[0:2]
     kode_kec = digits[0:6]
+    out["kode_kecamatan"] = kode_kec
     wil = _WILAYAH_KEC.get(kode_kec)
     if wil:
         out["provinsi"] = wil["provinsi"]
@@ -133,25 +238,6 @@ def decode_nik(nik: Optional[str]) -> dict:
 
 # ---------- OCR KTP ----------
 
-_ALAMAT_STOP_LABELS = [
-    "RT/RW", "RT / RW", "KEL/DESA", "KEL / DESA", "KELURAHAN", "DESA",
-    "KECAMATAN", "AGAMA", "STATUS PERKAWINAN", "STATUS PERKAWIN",
-    "PEKERJAAN", "KEWARGANEGARAAN", "BERLAKU HINGGA", "JENIS KELAMIN",
-    "GOL. DARAH", "GOL DARAH",
-]
-
-
-def _label_value(line: str, labels: list) -> Optional[str]:
-    up = line.upper()
-    for lab in labels:
-        idx = up.find(lab)
-        if idx != -1:
-            rest = line[idx + len(lab):]
-            rest = rest.lstrip(": ").strip(" :.-")
-            return rest.strip()
-    return None
-
-
 def _to_iso_date(raw: str) -> Optional[str]:
     m = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})", raw)
     if not m:
@@ -165,115 +251,211 @@ def _to_iso_date(raw: str) -> Optional[str]:
         return None
 
 
-def parse_ktp_text(text: str) -> dict:
-    """Heuristik ekstraksi field dari teks hasil OCR KTP Indonesia.
-    Tidak sempurna (kualitas tergantung foto) — hasil tetap harus dicek/diedit user."""
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-    data = {"nik": None, "nama": None, "tempat_lahir": None, "tgl_lahir": None, "alamat": None}
-    alamat_parts = []
-    capturing_alamat = False
+# ---------- OCR: PaddleOCR ----------
+# Tesseract DIHAPUS dari file ini (Agustus 2026) -- terbukti gagal total
+# (0 karakter terbaca) pada beberapa foto KTP nyata, termasuk yang sudah
+# di-crop & diluruskan sempurna, karena pola pengaman hologram di kartu
+# KTP terlalu padat untuk pipeline threshold klasik Tesseract. PaddleOCR
+# (deep learning) terbukti bisa membaca kartu yang sama dengan akurat.
+#
+# CATATAN PENTING (Agustus 2026): file ini SEKARANG SAMA di server lokal
+# maupun telegram_gateway/ (Railway) -- keduanya pakai PaddleOCR. Ini
+# keputusan SADAR meski PaddleOCR 3.x punya laporan kebocoran memori
+# kronis di banyak versi (RAM naik terus tiap request, tidak pernah
+# turun, akhirnya di-OOM-kill) -- lihat main.py di telegram_gateway/
+# untuk mitigasinya (restart otomatis berkala). Kalau Railway sering
+# crash, itu memang risiko yang sudah diketahui, bukan bug baru.
 
-    for line in lines:
-        up = line.upper()
+_paddle_engine = None  # singleton, di-load sekali saat request OCR pertama
 
-        if not data["nik"] and "NIK" in up:
-            digits = re.sub(r"\D", "", line)
-            if len(digits) >= 15:
-                data["nik"] = digits[:16]
 
-        if not data["nama"] and "NAMA" in up and "NIK" not in up:
-            v = _label_value(line, ["NAMA"])
-            if v and len(v) > 1:
-                data["nama"] = v
+def _get_paddle_engine():
+    global _paddle_engine
+    if _paddle_engine is None:
+        from paddleocr import PaddleOCR  # import lazy, lihat catatan di atas
+        _paddle_engine = PaddleOCR(
+            lang="id",
+            use_doc_orientation_classify=True,  # foto KTP dari HP sering rotasi 90/180/270 -- ini otomatis meluruskan (download 1 model kecil tambahan saat pertama jalan)
+            use_doc_unwarping=False,
+            use_textline_orientation=True,
+        )
+    return _paddle_engine
 
-        if not data["tempat_lahir"] and ("TEMPAT" in up and "LAHIR" in up):
-            v = _label_value(line, [
-                "TEMPAT/TGL LAHIR", "TEMPAT/TANGGAL LAHIR", "TEMPAT, TGL LAHIR",
-                "TEMPAT TGL LAHIR", "TEMPAT LAHIR",
-            ])
-            if v:
-                parts = re.split(r",", v, maxsplit=1)
+
+def _prepare_for_paddle(content: bytes, min_width: int = 1600) -> "Image.Image":
+    """Beda dari _preprocess_for_ocr: TIDAK di-threshold hitam-putih.
+    Model deep learning PaddleOCR dilatih di gambar natural (RGB/grayscale
+    halus) — thresholding keras justru menghilangkan informasi yang
+    modelnya butuhkan, beda dengan Tesseract yang klasik/berbasis piksel.
+
+    min_width dinaikkan dari 1000 ke 1600 (Agustus 2026) -- PaddleOCR
+    tidak punya parameter resmi utk "paksa deteksi spasi" (sudah dicek
+    source code-nya, return_word_box TIDAK membantu kasus ini karena cuma
+    mengelompokkan teks yang SUDAH dipisah spasi oleh model, bukan
+    mendeteksi celah piksel independen). Resolusi lebih tinggi = celah
+    antar kata jadi lebih banyak piksel = model lebih mungkin berhasil
+    memprediksi token spasi -- ini pengaruh terbesar yang bisa dikontrol
+    dari luar model tanpa retraining."""
+    img = Image.open(io.BytesIO(content))
+    img = ImageOps.exif_transpose(img).convert("RGB")
+    w, h = img.size
+    if w < min_width:
+        scale = min_width / w
+        img = img.resize((int(w * scale), int(h * scale)))
+    return img
+
+
+def _ocr_paddle_extract_text(img: "Image.Image") -> str:
+    import numpy as np
+    engine = _get_paddle_engine()
+    arr = np.array(img)
+    results = engine.predict(arr)
+    lines: list[str] = []
+    for res in results:
+        # OCRResult (paddlex) mewarisi dict langsung -- res["rec_texts"] resmi,
+        # sudah dicek ke source code paddlex, bukan tebakan dari dokumentasi.
+        lines.extend(res.get("rec_texts", []))
+    return "\n".join(lines)
+
+
+def _ocr_nik_strip_paddle(content: bytes) -> Optional[str]:
+    """Versi PaddleOCR dari _ocr_nik_strip. Tidak ada whitelist digit
+    resmi di API PaddleOCR yang simpel, jadi validasi sepenuhnya
+    mengandalkan decode_nik() -- sama seperti fallback di jalur Tesseract."""
+    img = _prepare_for_paddle(content, min_width=700)
+    text = _ocr_paddle_extract_text(img)
+    for candidate in re.findall(r"\d[\d\s]{14,20}\d", text):
+        digits = re.sub(r"\D", "", candidate)
+        if len(digits) == 16 and decode_nik(digits)["valid"]:
+            return digits
+    return None
+
+
+def _parse_ktp_lines_paddle(lines: list) -> dict:
+    """Parser KHUSUS format keluaran PaddleOCR: daftar potongan teks
+    BERURUTAN top-to-bottom (label di satu elemen, isinya di elemen
+    BERIKUTNYA) -- BEDA TOTAL dari format Tesseract ('Label: Isi' dalam
+    satu baris) yang dibaca parse_ktp_text(). Kalau dipakaikan
+    parse_ktp_text() ke sini, NIK/Nama TIDAK AKAN kebaca sama sekali
+    walau OCR mentahnya sudah bagus, karena pola yang dicari beda.
+
+    Toleran terhadap label yang sedikit salah baca (mis. 'Kecamaran' utk
+    'Kecamatan', 'TgiLai' utk 'Tgl Lahir') lewat pencocokan prefix
+    pendek, bukan exact match -- diuji langsung terhadap sampel nyata."""
+    data = {
+        "nik": None, "nama": None, "tempat_lahir": None, "tgl_lahir": None, "alamat": None,
+        "gol_darah": None, "rt": None, "rw": None, "kel_desa": None,
+        "agama": None, "status_perkawinan": None, "pekerjaan": None,
+    }
+    n = len(lines)
+
+    def next_nonempty(i):
+        j = i + 1
+        while j < n and not lines[j].strip():
+            j += 1
+        return lines[j].strip() if j < n else None
+
+    for i, raw in enumerate(lines):
+        line = (raw or "").strip()
+        if not line:
+            continue
+        up_nospace = re.sub(r"[^A-Z]", "", line.upper())
+
+        if not data["nik"]:
+            digits_here = re.sub(r"\D", "", line)
+            if len(digits_here) == 16:
+                data["nik"] = digits_here
+            elif up_nospace == "NIK":
+                nxt = next_nonempty(i)
+                if nxt:
+                    digits = re.sub(r"\D", "", nxt)
+                    if len(digits) >= 15:
+                        data["nik"] = digits[:16]
+
+        if not data["nama"] and up_nospace.startswith("NAMA"):
+            nxt = next_nonempty(i)
+            if nxt and len(nxt) > 1:
+                data["nama"] = nxt
+
+        if not data["tempat_lahir"] and up_nospace.startswith("TEMPAT"):
+            nxt = next_nonempty(i)
+            if nxt:
+                parts = re.split(r",", nxt, maxsplit=1)
                 data["tempat_lahir"] = parts[0].strip().rstrip(",")
                 if len(parts) > 1:
                     iso = _to_iso_date(parts[1])
                     if iso:
                         data["tgl_lahir"] = iso
                 if not data["tgl_lahir"]:
-                    iso = _to_iso_date(v)
+                    iso = _to_iso_date(nxt)
                     if iso:
                         data["tgl_lahir"] = iso
 
-        if "ALAMAT" in up and not capturing_alamat and not data["alamat"]:
-            v = _label_value(line, ["ALAMAT"])
-            if v:
-                alamat_parts.append(v)
-            capturing_alamat = True
-            continue
+        if not data["alamat"] and up_nospace.startswith("ALAMAT"):
+            nxt = next_nonempty(i)
+            if nxt:
+                data["alamat"] = nxt
 
-        if capturing_alamat:
-            if any(stop in up for stop in _ALAMAT_STOP_LABELS):
-                capturing_alamat = False
+        # Beberapa field muncul BERGABUNG dengan label sebelumnya di baris yang
+        # sama tanpa spasi (mis. "Gol DarahA" dari sampel nyata) -- cek dua
+        # kemungkinan: label persis (nilai di baris berikutnya) ATAU label+nilai
+        # menyatu di baris yang sama (ambil sisa karakter setelah label).
+        if not data["gol_darah"] and up_nospace.startswith("GOLDARAH"):
+            sisa = re.sub(r"(?i)^.*GOL\.?\s*DARAH", "", line).strip()
+            m = re.search(r"\b(AB|A|B|O)\b", sisa.upper()) or re.match(r"^(AB|A|B|O)$", sisa.upper())
+            if m:
+                data["gol_darah"] = m.group(1)
             else:
-                alamat_parts.append(line)
+                nxt = next_nonempty(i)
+                if nxt:
+                    m2 = re.match(r"^(AB|A|B|O)$", nxt.strip().upper())
+                    if m2:
+                        data["gol_darah"] = m2.group(1)
 
-    if alamat_parts and not data["alamat"]:
-        data["alamat"] = " ".join(p.strip(" :") for p in alamat_parts if p.strip(" :"))
+        if not data["rt"] and up_nospace.startswith("RTRW"):
+            nxt = next_nonempty(i)
+            if nxt:
+                m = re.match(r"\s*(\d{1,3})\s*/\s*(\d{1,3})", nxt)
+                if m:
+                    data["rt"], data["rw"] = m.group(1).zfill(3), m.group(2).zfill(3)
+
+        if not data["kel_desa"] and (up_nospace.startswith("KELDESA") or up_nospace.startswith("KELURAHAN") or up_nospace.startswith("DESA")):
+            nxt = next_nonempty(i)
+            if nxt:
+                data["kel_desa"] = nxt
+
+        if not data["agama"] and up_nospace.startswith("AGAMA"):
+            nxt = next_nonempty(i)
+            if nxt:
+                data["agama"] = nxt
+
+        # Toleran typo umum PaddleOCR: "Status Parkawioan" (harusnya "Perkawinan")
+        # -- cocokkan prefix pendek "STATUSP" yang bertahan di kedua kasus.
+        if not data["status_perkawinan"] and up_nospace.startswith("STATUSP"):
+            nxt = next_nonempty(i)
+            if nxt:
+                data["status_perkawinan"] = nxt
+
+        if not data["pekerjaan"] and up_nospace.startswith("PEKERJAAN"):
+            nxt = next_nonempty(i)
+            if nxt:
+                data["pekerjaan"] = nxt
 
     return data
 
 
-def _preprocess_for_ocr(content: bytes) -> Image.Image:
-    img = Image.open(io.BytesIO(content))
-    img = ImageOps.exif_transpose(img).convert("L")
-    w, h = img.size
-    if w < 1200:
-        scale = 1200 / w
-        img = img.resize((int(w * scale), int(h * scale)))
-    img = img.point(lambda p: 255 if p > 145 else 0)
-    return img
-
-
-def _preprocess_digit_strip(content: bytes) -> Image.Image:
-    """Sama seperti _preprocess_for_ocr tapi untuk crop sempit baris NIK
-    saja — upscale lebih agresif karena tingginya cuma satu baris teks."""
-    img = Image.open(io.BytesIO(content))
-    img = ImageOps.exif_transpose(img).convert("L")
-    w, h = img.size
-    if w < 900:
-        scale = 900 / w
-        img = img.resize((int(w * scale), int(h * scale)))
-    return img.point(lambda p: 255 if p > 140 else 0)
-
-
-def _ocr_nik_strip(content: bytes) -> Optional[str]:
-    """OCR baris NIK dengan whitelist angka saja. Whitelist menghapus
-    kesalahan klasik O/0, I/1, S/5 karena huruf sama sekali tidak
-    dikenali — tapi tetap bisa salah baca ANTAR angka (mis. 25 terbaca
-    51). Karena itu hasilnya HANYA dipakai kalau lolos decode_nik()
-    penuh (checksum tanggal/bulan/provinsi), bukan sekadar 16 digit
-    dengan prefix provinsi yang kebetulan cocok."""
-    img = _preprocess_digit_strip(content)
-    txt = pytesseract.image_to_string(
-        img, lang="ind",
-        config="--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789",
-    )
-    digits = re.sub(r"\D", "", txt)
-    if len(digits) == 16 and decode_nik(digits)["valid"]:
-        return digits
-    return None
-
-
 def run_ocr_pipeline(card_bytes: bytes, nik_strip_bytes: Optional[bytes] = None) -> dict:
     """Satu pintu untuk seluruh pipeline: OCR paragraf penuh + (opsional)
-    OCR strip NIK terpisah + validasi silang lewat decode_nik(). Dipakai
-    identik oleh app.py (endpoint admin) dan telegram_gateway (Mini App)."""
-    img = _preprocess_for_ocr(card_bytes)
-    raw_text = pytesseract.image_to_string(img, lang="ind+eng")
-    parsed = parse_ktp_text(raw_text)
+    OCR strip NIK terpisah + validasi silang lewat decode_nik().
+    Selalu pakai PaddleOCR di file ini (Tesseract dihapus, lihat catatan
+    di atas _get_paddle_engine)."""
+    img = _prepare_for_paddle(card_bytes)
+    raw_text = _ocr_paddle_extract_text(img)
+    parsed = _parse_ktp_lines_paddle(raw_text.split("\n"))
     parsed["raw_text"] = raw_text.strip()
 
     if nik_strip_bytes:
-        strip_nik = _ocr_nik_strip(nik_strip_bytes)
+        strip_nik = _ocr_nik_strip_paddle(nik_strip_bytes)
         if strip_nik:
             parsed["nik"] = strip_nik
 
@@ -287,6 +469,40 @@ def run_ocr_pipeline(card_bytes: bytes, nik_strip_bytes: Optional[bytes] = None)
     parsed["kabupaten_kota_nik"] = nik_info["kabupaten_kota"]
     parsed["kecamatan_nik"] = nik_info["kecamatan"]
     parsed["catatan_nik"] = nik_info["catatan"]
+
+    # Cocokkan Kel/Desa hasil OCR terhadap daftar desa ASLI di kecamatan
+    # yang sudah pasti benar dari NIK -- kandidatnya dibatasi cuma desa
+    # dalam kecamatan itu (bukan 83 ribu desa se-Indonesia), jadi cukup
+    # andal dipakai koreksi otomatis. Skor rendah -> TIDAK ditimpa, teks
+    # OCR asli tetap dipertahankan supaya tidak salah cocok tanpa disadari.
+    parsed["kel_desa_ocr"] = parsed.get("kel_desa")
+    parsed["kel_desa_match_score"] = None
+    if nik_info.get("kode_kecamatan"):
+        match = _match_kel_desa(parsed.get("kel_desa"), nik_info["kode_kecamatan"])
+        parsed["kel_desa_match_score"] = match["score"]
+        if match["matched"]:
+            parsed["kel_desa"] = match["matched"]
+
+    # Agama & Status Perkawinan: daftar tertutup resmi (6 agama, 4 status)
+    # -- aman dikoreksi dengan yakin, ambang standar (0.55).
+    parsed["agama_ocr"] = parsed.get("agama")
+    m_agama = _fuzzy_match(parsed.get("agama"), _AGAMA_RESMI)
+    if m_agama["matched"]:
+        parsed["agama"] = m_agama["matched"]
+
+    parsed["status_perkawinan_ocr"] = parsed.get("status_perkawinan")
+    m_status = _fuzzy_match(parsed.get("status_perkawinan"), _STATUS_PERKAWINAN_RESMI)
+    if m_status["matched"]:
+        parsed["status_perkawinan"] = m_status["matched"]
+
+    # Pekerjaan: BUKAN daftar resmi lengkap (lihat catatan di _PEKERJAAN_UMUM),
+    # jadi ambang dinaikkan (0.62) supaya lebih hati-hati -- kalau pekerjaan
+    # penyewa tidak ada di daftar umum ini, teks OCR asli dipertahankan.
+    parsed["pekerjaan_ocr"] = parsed.get("pekerjaan")
+    m_kerja = _fuzzy_match(parsed.get("pekerjaan"), _PEKERJAAN_UMUM, min_ratio=0.62)
+    if m_kerja["matched"]:
+        parsed["pekerjaan"] = m_kerja["matched"]
+
     return parsed
 
 

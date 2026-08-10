@@ -2,5 +2,7 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pydantic==2.9.2
 python-multipart==0.0.9
-pytesseract==0.3.13
 Pillow==10.4.0
+numpy==2.3.5
+paddlepaddle==3.3.1
+paddleocr==3.7.0
