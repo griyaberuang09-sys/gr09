@@ -39,18 +39,6 @@
   .row{ display:flex; gap:8px; }
   .row .btn{ flex:1; }
 
-  .ktp-stage{ position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:8px; overflow:hidden; margin-bottom:10px; touch-action:none; }
-  .ktp-stage video{ width:100%; height:100%; object-fit:cover; display:block; }
-  .ktp-guide{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:84%; aspect-ratio:85.6/54; border-radius:6px; box-shadow:0 0 0 100vmax rgba(0,0,0,.55); pointer-events:none; }
-  .ktp-corner{ position:absolute; width:24px; height:24px; border:2.5px solid var(--honey-dim); transition:border-color .25s; }
-  .ktp-corner.tl{ top:-2px; left:-2px; border-right:0; border-bottom:0; border-radius:6px 0 0 0; }
-  .ktp-corner.tr{ top:-2px; right:-2px; border-left:0; border-bottom:0; border-radius:0 6px 0 0; }
-  .ktp-corner.bl{ bottom:-2px; left:-2px; border-right:0; border-top:0; border-radius:0 0 0 6px; }
-  .ktp-corner.br{ bottom:-2px; right:-2px; border-left:0; border-top:0; border-radius:0 0 6px 0; }
-  .ktp-guide.ready .ktp-corner{ border-color:var(--moss); }
-  .ktp-hint{ position:absolute; left:0; right:0; bottom:0; padding:8px 10px; background:linear-gradient(transparent,rgba(0,0,0,.85)); font-size:13px; color:#fff; display:flex; gap:7px; align-items:center; }
-  .ktp-hint .dot{ width:7px; height:7px; border-radius:50%; background:var(--honey); flex:none; }
-  .ktp-hint .dot.ok{ background:var(--moss); }
   .ktp-preview{ width:100%; border-radius:8px; display:none; margin-bottom:10px; }
   #ktpFileInput{ display:none; }
 
@@ -87,28 +75,13 @@
   <!-- STEP 2: Foto KTP -->
   <div class="step" id="step2">
     <div class="panel">
-      <label style="margin-bottom:10px;">Foto KTP</label>
+      <label style="margin-bottom:6px;">Foto KTP</label>
+      <p class="small-muted" style="margin:0 0 14px;">Ambil foto KTP kamu dengan kamera HP, lalu unggah di sini.</p>
 
-      <div class="ktp-stage" id="ktpStage" style="display:none;">
-        <video id="video" autoplay playsinline muted></video>
-        <div class="ktp-guide" id="guide">
-          <span class="ktp-corner tl"></span><span class="ktp-corner tr"></span>
-          <span class="ktp-corner bl"></span><span class="ktp-corner br"></span>
-        </div>
-        <div class="ktp-hint"><span class="dot" id="dot"></span><span id="hintText">Posisikan KTP di dalam bingkai.</span></div>
-        <div id="zoomBadge" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,.6); color:#fff; font-size:12px; padding:3px 8px; border-radius:99px; display:none;">1.0x</div>
-      </div>
       <img id="preview" class="ktp-preview">
 
-      <button class="btn" style="margin-bottom:8px;" onclick="document.getElementById('ktpFileInput').click()">📁 Unggah Foto KTP (disarankan)</button>
-      <p class="small-muted" style="margin:-4px 0 12px;">Ini membuka kamera ASLI HP kamu — biasanya otomatis pakai lensa lebar yang pas buat KTP, beda dengan mode kamera di bawah yang kadang kezoom terus.</p>
+      <button class="btn" style="margin-bottom:14px;" onclick="document.getElementById('ktpFileInput').click()">📷 Ambil/Unggah Foto KTP</button>
       <input type="file" id="ktpFileInput" accept="image/*" onchange="handleFileUpload(event)">
-
-      <div class="row" style="margin-bottom:10px;">
-        <button class="btn ghost sm" id="camBtn" onclick="startCam()">Atau pakai kamera di sini</button>
-        <button class="btn sm" id="shotBtn" style="display:none;" disabled onclick="capture()">Ambil Foto</button>
-      </div>
-      <p class="small-muted" style="margin:-6px 0 10px;">Kalau KTP tidak muat penuh di bingkai, jauhkan HP sedikit (coba ~25–30 cm) atau cubit dua jari di layar buat zoom out — kalau masih kezoom terus, pakai tombol Unggah Foto di atas.</p>
 
       <p id="ocrStatus" class="status info" style="display:none;"></p>
 
@@ -230,204 +203,15 @@ function goStep(n){
   document.getElementById('step'+n).classList.add('active');
 }
 
-// ---------- Kamera live (versi ringkas dari panel admin) ----------
-const CFG = { guideWidthPct:0.84, cardAspect:85.6/54, sharpReady:130, glareMax:0.05, lumMin:55, lumMax:210, stableFrames:8, sampleWidth:300 };
-let stream=null, raf=null, stable=0, counting=false, busy=false, ktpBlob=null;
-const sampleCanvas = document.createElement('canvas');
-const sampleCtx = sampleCanvas.getContext('2d', {willReadFrequently:true});
-
-async function startCam(){
-  try{
-    // Langkah 1: minta izin dulu dengan constraint umum -- enumerateDevices()
-    // TIDAK memberi label kamera (termasuk info ultra-wide) sebelum izin
-    // diberikan, jadi tidak bisa cari kamera lebar SEBELUM langkah ini.
-    stream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:"environment"}, width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:15}}
-    });
-
-    // Langkah 2: sekarang label sudah terisi -- cek apakah ada device kamera
-    // FISIK terpisah yang labelnya mengindikasikan lensa ultra-wide (mis.
-    // "0.5x", "ultra wide"). Ini beda dari sekadar "zoom minimum" di bawah --
-    // kalau ketemu, pindah ke device itu karena FOV-nya benar-benar lebih
-    // lebar secara optik, bukan cuma software zoom di lensa yang sama.
-    try{
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const wide = devices.find(d => d.kind === 'videoinput' && /0\.5|ultra.?wide|wide.?angle/i.test(d.label));
-      if (wide){
-        const widerStream = await navigator.mediaDevices.getUserMedia({
-          video:{deviceId:{exact: wide.deviceId}, width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:15}}
-        });
-        stream.getTracks().forEach(t => t.stop());
-        stream = widerStream;
-      }
-    }catch(e){ /* tidak ketemu/gagal pindah -- tetap pakai stream awal, tidak fatal */ }
-  }catch(e){ alert('Tidak bisa mengakses kamera: '+e.message); return; }
-  const video = document.getElementById('video');
-  video.srcObject = stream;
-  await video.play().catch(()=>{});
-
-  // Banyak HP defaultnya kamera belakang sudah zoom >1x (bukan lensa
-  // paling lebar) -- di jarak dekat, KTP jadi kepotong cuma kelihatan
-  // sebagian. Paksa zoom minimum dulu, lalu izinkan pinch manual kalau
-  // device/browser mendukung kontrol zoom. CATATAN: ini cuma bisa mundur
-  // ke batas lensa yang SEDANG AKTIF (biasanya lensa utama ~1x) -- kalau
-  // di atas tidak ketemu device ultra-wide terpisah, zoom minimum di sini
-  // TETAP TIDAK BISA melampaui FOV fisik lensa utama. Kalau masih terlalu
-  // zoom setelah ini, satu-satunya jalan yang pasti adalah tombol Unggah
-  // Foto (pakai aplikasi kamera asli HP, bukan API browser).
-  zoomCaps = null; currentTrack = null;
-  try{
-    const track = stream.getVideoTracks()[0];
-    const caps = track.getCapabilities ? track.getCapabilities() : {};
-    if (caps.zoom && typeof caps.zoom.min === 'number'){
-      currentTrack = track;
-      zoomCaps = caps.zoom;
-      currentZoom = caps.zoom.min;
-      await track.applyConstraints({advanced:[{zoom: currentZoom}]});
-      setupPinchZoom();
-      updateZoomBadge();
-    }
-  }catch(e){ /* tidak semua device/browser dukung kontrol zoom -- diamkan saja */ }
-
-  document.getElementById('ktpStage').style.display='block';
-  document.getElementById('camBtn').style.display='none';
-  const shotBtn = document.getElementById('shotBtn');
-  shotBtn.style.display='inline-block';
-  shotBtn.disabled = false;
-  document.getElementById('preview').style.display='none';
-  stable = 0;
-  cancelAnimationFrame(raf);
-  tick();
-}
-
-// ---------- Pinch-to-zoom ----------
-let zoomCaps=null, currentTrack=null, currentZoom=1, pinchStartDist=0, pinchStartZoom=1, zoomBusy=false;
-
-function updateZoomBadge(){
-  const badge = document.getElementById('zoomBadge');
-  if (!zoomCaps){ badge.style.display='none'; return; }
-  badge.style.display='block';
-  badge.textContent = currentZoom.toFixed(1)+'x';
-}
-
-function pinchDistance(touches){
-  const dx = touches[0].clientX - touches[1].clientX;
-  const dy = touches[0].clientY - touches[1].clientY;
-  return Math.hypot(dx, dy);
-}
-
-function setupPinchZoom(){
-  const stage = document.getElementById('ktpStage');
-  stage.ontouchstart = (e) => {
-    if (e.touches.length === 2 && zoomCaps){
-      pinchStartDist = pinchDistance(e.touches);
-      pinchStartZoom = currentZoom;
-      e.preventDefault();
-    }
-  };
-  stage.ontouchmove = (e) => {
-    if (e.touches.length === 2 && zoomCaps && pinchStartDist > 0){
-      e.preventDefault();
-      if (zoomBusy) return; // hindari applyConstraints menumpuk saat jari masih gerak cepat
-      const scale = pinchDistance(e.touches) / pinchStartDist;
-      let z = pinchStartZoom * scale;
-      z = Math.max(zoomCaps.min, Math.min(zoomCaps.max, z));
-      currentZoom = z;
-      updateZoomBadge();
-      zoomBusy = true;
-      currentTrack.applyConstraints({advanced:[{zoom: z}]})
-        .catch(()=>{})
-        .finally(()=>{ zoomBusy = false; });
-    }
-  };
-  stage.ontouchend = (e) => {
-    if (e.touches.length < 2) pinchStartDist = 0;
-  };
-}
-function roiInVideo(vw, vh){
-  const stageAspect = 4/3, videoAspect = vw/vh;
-  let visW=vw, visH=vh, offX=0, offY=0;
-  if (videoAspect > stageAspect){ visW = vh*stageAspect; offX=(vw-visW)/2; }
-  else { visH = vw/stageAspect; offY=(vh-visH)/2; }
-  const w = visW*CFG.guideWidthPct, h = w/CFG.cardAspect;
-  return { x:offX+(visW-w)/2, y:offY+(visH-h)/2, w, h };
-}
-function analyse(video){
-  const vw=video.videoWidth, vh=video.videoHeight;
-  if(!vw) return null;
-  const roi = roiInVideo(vw, vh);
-  const w=CFG.sampleWidth, h=Math.round(w/CFG.cardAspect);
-  sampleCanvas.width=w; sampleCanvas.height=h;
-  sampleCtx.drawImage(video, roi.x, roi.y, roi.w, roi.h, 0, 0, w, h);
-  const px = sampleCtx.getImageData(0,0,w,h).data;
-  const g = new Float32Array(w*h);
-  let sum=0, hot=0;
-  for(let i=0,p=0;i<px.length;i+=4,p++){
-    const y=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];
-    g[p]=y; sum+=y; if(y>246) hot++;
-  }
-  const lum=sum/(w*h), glare=hot/(w*h);
-  let ls=0, lss=0, n=0;
-  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){
-    const i=y*w+x, v=4*g[i]-g[i-1]-g[i+1]-g[i-w]-g[i+w];
-    ls+=v; lss+=v*v; n++;
-  }
-  const mean=ls/n;
-  return { sharp: lss/n-mean*mean, glare, lum };
-}
-function tick(){
-  const video = document.getElementById('video');
-  const m = analyse(video);
-  const guide = document.getElementById('guide');
-  const dot = document.getElementById('dot');
-  const hint = document.getElementById('hintText');
-  const shotBtn = document.getElementById('shotBtn');
-  if (m){
-    const sharpOk = m.sharp >= CFG.sharpReady;
-    const glareOk = m.glare <= CFG.glareMax;
-    const lumOk = m.lum >= CFG.lumMin && m.lum <= CFG.lumMax;
-    const ready = sharpOk && glareOk && lumOk;
-    guide.classList.toggle('ready', ready);
-    dot.classList.toggle('ok', ready);
-    // Cuma info, tidak lagi mengunci/otomatis jepret -- di sebagian HP
-    // zoom kamera belakangnya suka gagal diatur, jadi biar penyewa
-    // sendiri yang putuskan kapan tekan Ambil Foto.
-    shotBtn.disabled = busy;
-    if (ready){ hint.textContent='Siap — tahan posisi.'; }
-    else { hint.textContent = !sharpOk?'Kurang tajam — dekatkan/perbaiki fokus.' : !glareOk?'Ada pantulan — miringkan kartu.' : m.lum<CFG.lumMin?'Terlalu gelap.':'Terlalu terang.'; }
-  }
-  raf = requestAnimationFrame(tick);
-}
-function stopCam(){ cancelAnimationFrame(raf); if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
-
-async function capture(){
-  if (busy) return;
-  busy = true;
-  const video = document.getElementById('video');
-  const vw=video.videoWidth, vh=video.videoHeight;
-  const roi = roiInVideo(vw, vh);
-  const c = document.createElement('canvas');
-  c.width = Math.round(roi.w); c.height = Math.round(roi.h);
-  c.getContext('2d').drawImage(video, roi.x, roi.y, roi.w, roi.h, 0, 0, c.width, c.height);
-  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
-  stopCam();
-  ktpBlob = blob;
-  const preview = document.getElementById('preview');
-  preview.src = URL.createObjectURL(blob);
-  preview.style.display = 'block';
-  document.getElementById('ktpStage').style.display='none';
-  document.getElementById('shotBtn').style.display='none';
-  document.getElementById('camBtn').style.display='inline-block';
-  document.getElementById('camBtn').textContent='Ambil Ulang';
-  await runOcr(blob);
-  busy = false;
-}
+// ---------- Foto KTP: unggah saja, tidak ada mode kamera live lagi ----------
+// (kamera live dihapus -- sulit dikontrol zoom-nya di banyak HP; unggah
+// foto pakai aplikasi kamera ASLI HP jauh lebih andal)
+let ktpBlob = null;
 
 async function handleFileUpload(evt){
   const file = evt.target.files[0];
   evt.target.value = '';
   if (!file) return;
-  stopCam();
   let blob;
   try{
     const bitmap = await createImageBitmap(file);
@@ -441,8 +225,6 @@ async function handleFileUpload(evt){
   const preview = document.getElementById('preview');
   preview.src = URL.createObjectURL(blob);
   preview.style.display = 'block';
-  document.getElementById('ktpStage').style.display='none';
-  document.getElementById('shotBtn').style.display='none';
   await runOcr(blob);
 }
 
