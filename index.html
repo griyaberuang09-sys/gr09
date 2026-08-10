@@ -1,0 +1,2129 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Griya Beruang — Manajemen Kos</title>
+<style>
+  :root{
+    --bg: #0f1512;
+    --panel: #161f1b;
+    --panel-2: #1c2620;
+    --line: #2a362f;
+    --text: #eef2ee;
+    --muted: #8fa397;
+    --moss: #6b8f71;
+    --honey: #d9a441;
+    --honey-dim: #7a5f26;
+    --danger: #c96a4f;
+    --ok: #6b8f71;
+    --radius: 10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size:19px; line-height:1.55;
+    min-height:100vh;
+  }
+  .app-header{ position:sticky; top:0; z-index:40; }
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 28px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, #131a16, #0f1512);
+  }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand .mark{
+    width:36px;height:36px;border-radius:8px;
+    background:radial-gradient(circle at 30% 30%, var(--honey), var(--honey-dim));
+    display:flex;align-items:center;justify-content:center;font-size:23px;
+  }
+  .brand h1{ font-size:23px; margin:0; letter-spacing:.3px; font-weight:600; }
+  .brand .sub{ font-size:15px; color:var(--muted); margin-top:2px; }
+  .haos-pill{
+    font-size:15px; padding:7px 14px; border-radius:999px; border:1px solid var(--line);
+    color:var(--muted); display:flex; align-items:center; gap:6px;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+  .dot.on{background:var(--ok);}
+  .dot.off{background:var(--danger);}
+
+  nav{ display:flex; gap:2px; padding:0 24px; border-bottom:1px solid var(--line); background:#111713; }
+  nav button{
+    background:none;border:none;color:var(--muted);padding:17px 19px;font-size:18px;
+    cursor:pointer; border-bottom:2px solid transparent; font-weight:500;
+  }
+  nav button.active{ color:var(--honey); border-bottom-color:var(--honey); }
+  nav button:hover{ color:var(--text); }
+
+  .floor-tabs{ display:flex; gap:6px; margin-bottom:16px; }
+  .floor-tab{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
+    padding:8px 16px; border-radius:7px; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  .floor-tab.active{ background:var(--honey); color:#1a1206; border-color:var(--honey); }
+  .floor-tab:hover:not(.active){ color:var(--text); }
+
+  main{ padding:26px 28px; max-width:1180px; margin:0 auto; }
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  .cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:24px;}
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px; transition:border-color .15s, transform .15s;}
+  .card:hover{ border-color:var(--honey); transform:translateY(-1px); }
+  .card .num{ font-size:34px; font-weight:700; }
+  .card .label{ font-size:16px; color:var(--muted); margin-top:4px;}
+  .card.warn .num{ color:var(--danger); }
+  .card.good .num{ color:var(--ok); }
+
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:20px; margin-bottom:20px;}
+  .panel h2{ font-size:20px; margin:0 0 14px; color:var(--text); font-weight:600; }
+  .panel-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;}
+  .panel-header h2{ margin:0; }
+
+  table{ width:100%; border-collapse:collapse; font-size:18px; }
+  th{ text-align:left; color:var(--muted); font-weight:600; padding:12px 14px; border-bottom:1px solid var(--line); font-size:15px; text-transform:uppercase; letter-spacing:.4px;}
+  td{ padding:10px; border-bottom:1px solid var(--line); }
+  tr:last-child td{ border-bottom:none; }
+  tr:hover td{ background:var(--panel-2); }
+
+  .btn{
+    background:var(--honey); color:#1a1206; border:none; border-radius:7px;
+    padding:12px 18px; font-size:17px; font-weight:600; cursor:pointer;
+  }
+  .btn:hover{ filter:brightness(1.08); }
+  .btn.ghost{ background:none; border:1px solid var(--line); color:var(--text); }
+  .btn.danger{ background:var(--danger); color:#1a0f0b; }
+  .btn.sm{ padding:9px 14px; font-size:15.5px; }
+
+  .badge{ font-size:15px; padding:5px 13px; border-radius:999px; font-weight:600; }
+  .badge.aktif{ background:rgba(107,143,113,.18); color:var(--moss); }
+  .badge.checkout{ background:rgba(200,120,90,.15); color:var(--danger); }
+  .badge.lunas{ background:rgba(107,143,113,.18); color:var(--moss); }
+  .badge.belum_bayar{ background:rgba(217,164,65,.15); color:var(--honey); }
+  .badge.kosong{ background:rgba(255,255,255,.06); color:var(--muted); }
+  .badge.terisi{ background:rgba(217,164,65,.15); color:var(--honey); }
+
+  .modal-bg{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.6);
+    align-items:center; justify-content:center; z-index:50; padding:20px;
+  }
+  .modal-bg.active{ display:flex; }
+  .modal{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:24px; width:100%; max-width:560px; max-height:88vh; overflow:auto;
+  }
+  .modal.modal-wide{ max-width:960px; }
+  .two-col{ display:flex; gap:28px; align-items:flex-start; }
+  .two-col .col{ flex:1; min-width:0; display:flex; flex-direction:column; gap:12px; }
+  .two-col .col + .col{ border-left:1px solid var(--line); padding-left:28px; }
+  .two-col .col h4{ margin:0 0 4px; font-size:15px; color:var(--honey); font-weight:700; text-transform:uppercase; letter-spacing:.4px; }
+  @media (max-width: 720px){
+    .two-col{ flex-direction:column; }
+    .two-col .col + .col{ border-left:none; padding-left:0; border-top:1px solid var(--line); padding-top:16px; }
+  }
+
+  .modal h3{ margin:0 0 16px; font-size:22px; }
+  .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .form-grid.full > *{ grid-column:1/-1; }
+  label{ font-size:16px; color:var(--muted); display:block; margin-bottom:6px;}
+  input, select, textarea{
+    width:100%; background:#0f1512; border:1px solid var(--line); color:var(--text);
+    padding:13px 14px; border-radius:7px; font-size:18px; font-family:inherit;
+  }
+  input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--honey); }
+  .field{ margin-bottom:0; }
+  .modal-actions{
+    display:flex; justify-content:flex-end; gap:10px;
+    position:sticky; bottom:-24px;
+    background:var(--panel);
+    margin:18px -24px -24px -24px;
+    padding:14px 24px;
+    border-top:1px solid var(--line);
+    border-radius:0 0 12px 12px;
+  }
+
+  .ktp-box{ border:1px solid var(--line); border-radius:8px; padding:14px; grid-column:1/-1;}
+  #ktpCanvas{ display:none; }
+  .ktp-preview{ width:100%; max-width:280px; border-radius:8px; margin:0 auto; display:block; }
+
+  /* ---- viewfinder ---- */
+  .ktp-stage{
+    position:relative; width:100%; max-width:380px; margin:0 auto;
+    aspect-ratio:4/3; background:#000; border-radius:8px; overflow:hidden;
+  }
+  .ktp-stage video{ width:100%; height:100%; object-fit:cover; display:block; }
+  .ktp-guide{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:82%; aspect-ratio:85.6/54; border-radius:6px;
+    box-shadow:0 0 0 100vmax rgba(0,0,0,.55); pointer-events:none;
+  }
+  .ktp-corner{ position:absolute; width:26px; height:26px; border:2.5px solid var(--honey-dim); transition:border-color .25s; }
+  .ktp-corner.tl{ top:-2px; left:-2px; border-right:0; border-bottom:0; border-radius:6px 0 0 0; }
+  .ktp-corner.tr{ top:-2px; right:-2px; border-left:0; border-bottom:0; border-radius:0 6px 0 0; }
+  .ktp-corner.bl{ bottom:-2px; left:-2px; border-right:0; border-top:0; border-radius:0 0 0 6px; }
+  .ktp-corner.br{ bottom:-2px; right:-2px; border-left:0; border-top:0; border-radius:0 0 6px 0; }
+  .ktp-guide.ready .ktp-corner{ border-color:var(--moss); }
+  .ktp-nikband{
+    position:absolute; left:3%; top:13%; width:77%; height:14%;
+    border:1px dashed rgba(217,164,65,.45); border-radius:3px; pointer-events:none;
+  }
+  .ktp-hint{
+    position:absolute; left:0; right:0; bottom:0; padding:8px 10px;
+    background:linear-gradient(transparent,rgba(0,0,0,.85));
+    font-size:13.5px; color:#fff; display:flex; align-items:center; gap:7px;
+  }
+  .ktp-hint .dot{ width:7px; height:7px; border-radius:50%; background:var(--honey); flex:none; }
+  .ktp-hint .dot.ok{ background:var(--moss); }
+  .ktp-countdown{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    font-size:52px; font-weight:700; color:var(--moss); opacity:0; transition:opacity .15s;
+  }
+  .ktp-countdown.on{ opacity:.95; }
+  .ktp-meters{ display:flex; gap:10px; max-width:380px; margin:10px auto 0; }
+  .ktp-meter{ flex:1; min-width:0; text-align:left; }
+  .ktp-meter span{ font-size:12px; color:var(--muted); display:flex; justify-content:space-between; }
+  .ktp-meter .bar{ height:4px; background:var(--line); border-radius:99px; margin-top:4px; overflow:hidden; }
+  .ktp-meter .bar i{ display:block; height:100%; width:0%; background:var(--honey); transition:width .15s linear, background .2s; }
+  .ktp-meter .bar i.ok{ background:var(--moss); }
+  .ktp-meter .bar i.bad{ background:var(--danger); }
+  .ktp-toggle{ font-size:14px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+  .ktp-toggle input{ width:auto; }
+  .req{ color:var(--danger); }
+  .small-muted{ font-size:15.5px; color:var(--muted); }
+
+  .empty{ text-align:center; padding:30px; color:var(--muted); font-size:18px; }
+</style>
+</head>
+<body>
+
+<div class="modal-bg active" id="loginScreen" style="z-index:200; background:var(--bg);">
+  <div class="modal" style="max-width:340px;">
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="font-size:36px;">🐻</div>
+      <h3 style="margin:8px 0 0;">Griya Beruang</h3>
+      <div class="small-muted">Masuk untuk mengelola kos</div>
+    </div>
+    <div class="field" style="margin-bottom:12px;"><label>Username</label><input id="login_username" autocomplete="username" onkeydown="if(event.key==='Enter') doLogin()"></div>
+    <div class="field" style="margin-bottom:6px;"><label>Password</label><input id="login_password" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter') doLogin()"></div>
+    <p class="small-muted" id="loginError" style="color:var(--danger); min-height:16px;"></p>
+    <button class="btn" style="width:100%;" onclick="doLogin()">Masuk</button>
+  </div>
+</div>
+
+<div id="appRoot" style="display:none;">
+
+<div class="app-header">
+<div class="topbar">
+  <div class="brand">
+    <div class="mark">🐻</div>
+    <div>
+      <h1>Griya Beruang</h1>
+      <div class="sub">Manajemen Kos</div>
+    </div>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <div class="haos-pill"><span id="userText">-</span><button class="btn ghost sm" style="margin-left:8px; padding:3px 9px;" onclick="doLogout()">Keluar</button></div>
+    <div class="haos-pill" id="haosPill"><span class="dot" id="haosDot"></span> <span id="haosText">Memeriksa HAOS…</span></div>
+  </div>
+</div>
+
+<nav>
+  <button data-view="dashboard" class="active">Dashboard</button>
+  <button data-view="tenants">Penyewa</button>
+  <button data-view="payments">Pembayaran</button>
+  <button data-view="rooms">Kamar</button>
+  <button data-view="locks">Kunci &amp; WiFi</button>
+  <button data-view="notif">Notifikasi</button>
+  <button data-view="account">Akun</button>
+  <button data-view="backup">Backup</button>
+</nav>
+</div>
+
+<main>
+
+  <!-- DASHBOARD -->
+  <div class="view active" id="view-dashboard">
+    <div class="cards" id="summaryCards"></div>
+    <div class="panel">
+      <h2>Aktivitas Terbaru</h2>
+      <table><thead><tr><th>Waktu</th><th>Kejadian</th><th>Detail</th></tr></thead>
+      <tbody id="logsBody"></tbody></table>
+    </div>
+  </div>
+
+  <!-- ROOMS -->
+  <div class="view" id="view-rooms">
+    <div class="panel">
+      <h2>Daftar Kamar</h2>
+      <p class="small-muted">Klik nomor kamar untuk mengubah data kamar tersebut (harga, entity HAOS, water heater, WiFi, dll).</p>
+      <div class="floor-tabs">
+        <button class="floor-tab active" data-floor="1" onclick="switchRoomFloorTab(1)">Lantai 1</button>
+        <button class="floor-tab" data-floor="2" onclick="switchRoomFloorTab(2)">Lantai 2</button>
+        <button class="floor-tab" data-floor="3" onclick="switchRoomFloorTab(3)">Lantai 3</button>
+      </div>
+      <table>
+        <thead><tr><th>No. Kamar</th><th>Harga/Bulan</th><th>Status</th><th>Penyewa</th><th>Water Heater</th><th>WiFi Password</th><th>Lock Entity (HAOS)</th><th>Status Lock</th></tr></thead>
+        <tbody id="roomsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TENANTS -->
+  <div class="view" id="view-tenants">
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Daftar Penyewa</h2>
+        <div style="display:flex; gap:10px;">
+          <button class="btn ghost" id="telegramDraftBtn" onclick="openTelegramDraftsModal()" style="display:none;">📲 Draft Telegram <span id="telegramDraftBadge" class="badge" style="background:var(--honey); color:#1a1206;"></span></button>
+          <button class="btn ghost" id="bookingRequestBtn" onclick="openBookingRequestsModal()" style="display:none;">📩 Booking Masuk <span id="bookingRequestBadge" class="badge" style="background:var(--honey); color:#1a1206;"></span></button>
+          <button class="btn ghost" onclick="openPhoneRegistryModal()">📋 Database Nomor HP</button>
+          <button class="btn ghost" onclick="openTenantHistoryModal()">🕒 Riwayat Penyewa</button>
+          <button class="btn" onclick="openTenantModal()">+ Check-in Penyewa</button>
+        </div>
+      </div>
+      <div class="floor-tabs">
+        <button class="floor-tab active" data-floor="1" onclick="switchTenantFloorTab(1)">Lantai 1</button>
+        <button class="floor-tab" data-floor="2" onclick="switchTenantFloorTab(2)">Lantai 2</button>
+        <button class="floor-tab" data-floor="3" onclick="switchTenantFloorTab(3)">Lantai 3</button>
+      </div>
+      <table>
+        <thead><tr><th>No. Kamar</th><th>Nama Penyewa</th><th>No. Telpon</th><th>Check-in</th><th>Sewa (Bulan)</th><th>Status</th><th>KTP</th><th>Kredensial</th><th></th></tr></thead>
+        <tbody id="tenantsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PAYMENTS -->
+  <div class="view" id="view-payments">
+    <div class="panel">
+      <div class="panel-header"><h2>Pembayaran &amp; Tagihan Sewa</h2><button class="btn" onclick="openPaymentModal()">+ Tambah Tagihan</button></div>
+      <div class="floor-tabs">
+        <button class="floor-tab active" data-floor="1" onclick="switchPaymentFloorTab(1)">Lantai 1</button>
+        <button class="floor-tab" data-floor="2" onclick="switchPaymentFloorTab(2)">Lantai 2</button>
+        <button class="floor-tab" data-floor="3" onclick="switchPaymentFloorTab(3)">Lantai 3</button>
+      </div>
+      <table>
+        <thead><tr><th>No. Kamar</th><th>Nama Penyewa</th><th>Sewa (Bulan)</th><th>Check-In</th><th>Check-Out</th><th>Jumlah</th><th>Status</th><th>Tanggal Bayar</th><th></th></tr></thead>
+        <tbody id="paymentsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- LOCKS -->
+  <div class="view" id="view-locks">
+    <div class="panel">
+      <h2>Kunci Pintar &amp; WiFi (via HAOS)</h2>
+      <p class="small-muted">Kredensial Card/PIN dibuat &amp; dikelola di Tuya Smart Life. Panel ini hanya mengontrol lock &amp; WiFi guest via Home Assistant OS lokal dan memetakan entity ke kamar.</p>
+      <div class="floor-tabs">
+        <button class="floor-tab active" data-floor="1" onclick="switchLockFloorTab(1)">Lantai 1</button>
+        <button class="floor-tab" data-floor="2" onclick="switchLockFloorTab(2)">Lantai 2</button>
+        <button class="floor-tab" data-floor="3" onclick="switchLockFloorTab(3)">Lantai 3</button>
+      </div>
+      <table>
+        <thead><tr><th>Kamar</th><th>Lock Entity</th><th>Status Lock</th><th>Aksi Lock</th><th>WiFi Entity</th><th>Status WiFi</th><th>Aksi WiFi</th></tr></thead>
+        <tbody id="locksBody"></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <h2>Konfigurasi HAOS</h2>
+      <p class="small-muted">Atur URL &amp; token di file <code>config.json</code> pada server backend. Setelah diubah, restart service.</p>
+    </div>
+  </div>
+
+  <!-- NOTIFICATIONS -->
+  <div class="view" id="view-notif">
+    <div class="panel">
+      <div class="panel-header"><h2>Notifikasi Telegram — Jatuh Tempo</h2><span class="haos-pill" id="tgPill"><span class="dot" id="tgDot"></span> <span id="tgText">Memeriksa…</span></span></div>
+      <p class="small-muted" id="tgSchedule"></p>
+      <p class="small-muted">Bot mengirim pengingat H-3 &amp; H-1 sebelum jatuh tempo, notifikasi pada hari-H, dan notifikasi terlambat (diulang tiap hari) sampai tagihan ditandai lunas. Atur <code>telegram_bot_token</code> dan <code>telegram_chat_id</code> di <code>config.json</code> lalu restart service.</p>
+      <div style="display:flex; gap:10px;">
+        <button class="btn ghost sm" onclick="testTelegram()">Tes Kirim Pesan</button>
+        <button class="btn sm" onclick="runTelegramCheck()">Jalankan Pengecekan Sekarang</button>
+      </div>
+      <p class="small-muted" id="tgActionResult"></p>
+    </div>
+    <div class="panel">
+      <h2>Riwayat Notifikasi Terkirim</h2>
+      <table>
+        <thead><tr><th>Waktu</th><th>Penyewa</th><th>Kamar</th><th>Periode</th><th>Jenis</th></tr></thead>
+        <tbody id="notifBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- ACCOUNT -->
+  <div class="view" id="view-account">
+    <div class="panel">
+      <h2>Ganti Password</h2>
+      <div class="form-grid full">
+        <div class="field"><label>Password Lama</label><input id="cp_old" type="password"></div>
+        <div class="field"><label>Password Baru (min. 6 karakter)</label><input id="cp_new" type="password"></div>
+      </div>
+      <div style="margin-top:14px;"><button class="btn" onclick="changePassword()">Simpan Password Baru</button></div>
+      <p class="small-muted" id="cpResult"></p>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Akun Admin</h2><button class="btn ghost sm" onclick="openAddUserModal()">+ Tambah Akun</button></div>
+      <table>
+        <thead><tr><th>Username</th><th>Dibuat</th><th></th></tr></thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- BACKUP -->
+  <div class="view" id="view-backup">
+    <div class="panel">
+      <div class="panel-header"><h2>Backup Database ke Google Drive</h2><span class="haos-pill" id="bkPill"><span class="dot" id="bkDot"></span> <span id="bkText">Memeriksa…</span></span></div>
+      <p class="small-muted" id="bkSchedule"></p>
+      <p class="small-muted" id="bkDiag" style="font-family:monospace; word-break:break-all;"></p>
+      <p class="small-muted">Backup mencakup database (kamar, penyewa, pembayaran) dan foto KTP, dikemas jadi satu file .zip lalu diunggah ke folder Google Drive yang sudah ditentukan. Backup lama otomatis dihapus, hanya menyisakan sejumlah file terbaru sesuai pengaturan. Konfigurasi ada di <code>config.json</code> — lihat README bagian "Konfigurasi Backup Google Drive".</p>
+      <div style="display:flex; gap:10px;">
+        <button class="btn sm" onclick="runBackupNow()">Backup Sekarang</button>
+      </div>
+      <p class="small-muted" id="bkActionResult"></p>
+    </div>
+    <div class="panel">
+      <h2>Riwayat Backup</h2>
+      <table>
+        <thead><tr><th>Waktu</th><th>File</th><th>Ukuran</th><th>Status</th></tr></thead>
+        <tbody id="backupBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- ROOM MODAL -->
+<div class="modal-bg" id="roomModalBg">
+  <div class="modal">
+    <h3 id="roomModalTitle">Tambah Kamar</h3>
+    <div class="form-grid">
+      <div class="field"><label>Nomor Kamar</label><input id="r_number"></div>
+      <div class="field"><label>Lantai</label><input id="r_floor" type="number" value="1"></div>
+      <div class="field"><label>Harga / Bulan (Rp)</label><input id="r_price" type="number"></div>
+      <div class="field">
+        <label>Water Heater</label>
+        <select id="r_water_heater"><option value="0">Tidak ada</option><option value="1">Ada</option></select>
+      </div>
+      <div class="field"><label>WiFi Password</label><input id="r_wifi_password" placeholder="Beruang#09"></div>
+      <div class="field">
+        <label>Lock Entity (HAOS)</label>
+        <input id="r_lock" list="lockEntitiesDatalist" placeholder="lock.kamar_01 — pilih atau ketik manual">
+        <datalist id="lockEntitiesDatalist"></datalist>
+      </div>
+      <div class="field">
+        <label>WiFi Control Entity (HAOS)</label>
+        <input id="r_wifi_entity" list="wifiEntitiesDatalist" placeholder="switch.wifi_kamar_01 — pilih atau ketik manual">
+        <datalist id="wifiEntitiesDatalist"></datalist>
+      </div>
+      <div class="field full"><label>Catatan</label><textarea id="r_notes" rows="2"></textarea></div>
+    </div>
+    <p class="small-muted" id="entityListStatus"></p>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal('roomModalBg')">Batal</button>
+      <button class="btn" onclick="saveRoom()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- TENANT MODAL -->
+<div class="modal-bg" id="tenantModalBg">
+  <div class="modal modal-wide">
+    <h3 id="tenantModalTitle">Check-in Penyewa Baru</h3>
+    <div class="two-col">
+      <div class="col">
+        <h4>Verifikasi KTP</h4>
+
+        <div class="ktp-box" id="ktpBox">
+          <label style="margin-bottom:2px;">1. Foto &amp; Data KTP</label>
+          <p class="small-muted" id="ktpResBadge" style="margin:0 0 8px;"></p>
+
+          <div class="ktp-stage" id="ktpStage" style="display:none;">
+            <video id="ktpVideo" autoplay playsinline muted></video>
+            <div class="ktp-guide" id="ktpGuide">
+              <span class="ktp-corner tl"></span><span class="ktp-corner tr"></span>
+              <span class="ktp-corner bl"></span><span class="ktp-corner br"></span>
+              <div class="ktp-nikband"></div>
+            </div>
+            <div class="ktp-countdown" id="ktpCountdown"></div>
+            <div class="ktp-hint"><span class="dot" id="ktpDot"></span><span id="ktpHintText">Posisikan KTP di dalam bingkai.</span></div>
+          </div>
+          <canvas id="ktpCanvas"></canvas>
+          <img id="ktpPreview" class="ktp-preview" style="display:none;">
+
+          <div class="ktp-meters" id="ktpMeters" style="display:none;">
+            <div class="ktp-meter"><span>Ketajaman <b id="ktpSharpVal">—</b></span><div class="bar"><i id="ktpSharpBar"></i></div></div>
+            <div class="ktp-meter"><span>Pantulan <b id="ktpGlareVal">—</b></span><div class="bar"><i id="ktpGlareBar"></i></div></div>
+            <div class="ktp-meter"><span>Cahaya <b id="ktpLumVal">—</b></span><div class="bar"><i id="ktpLumBar"></i></div></div>
+          </div>
+
+          <div style="margin-top:10px; display:flex; gap:8px; justify-content:center; align-items:center; flex-wrap:wrap;">
+            <button type="button" class="btn ghost sm" onclick="startKtpCam()">Buka Kamera</button>
+            <button type="button" class="btn sm" id="captureBtn" style="display:none;" disabled onclick="captureKtp()">Ambil Foto</button>
+            <button type="button" class="btn ghost sm" id="retakeBtn" style="display:none;" onclick="retakeKtp()">Ambil Ulang</button>
+            <button type="button" class="btn ghost sm" onclick="document.getElementById('ktpFileInput').click()">Unggah Foto KTP</button>
+            <input type="file" id="ktpFileInput" accept="image/*" capture="environment" style="display:none" onchange="handleKtpFileUpload(event)">
+            <label class="ktp-toggle" id="ktpAutoToggleWrap" style="display:none;">
+              <input type="checkbox" id="ktpAutoShot" checked> Jepret otomatis
+            </label>
+          </div>
+          <p class="small-muted" style="margin-top:4px;">Di HP: sebaiknya pakai <b>Unggah Foto KTP</b> — ini membuka kamera asli HP (fokus &amp; kualitas lebih baik) alih-alih mode live di atas.</p>
+          <p class="small-muted" id="ocrStatus" style="margin-top:6px;"></p>
+        </div>
+
+        <p class="small-muted" style="margin:14px 0 6px;">2. Lengkapi data wajib</p>
+        <div class="field"><label>Nama (sesuai KTP) <span class="req">*</span></label><input id="t_ktp_nama"></div>
+        <div class="field">
+          <label>NIK <span class="req">*</span></label>
+          <input id="t_nik" inputmode="numeric" maxlength="16" oninput="onNikInput(this.value)">
+          <p class="small-muted" id="nikStatus" style="margin:4px 0 0;"></p>
+        </div>
+        <div class="field"><label>Nomor Telepon <span class="req">*</span></label><input id="t_phone"></div>
+        <div class="field"><label>Nomor Kamar <span class="req">*</span></label><select id="t_room" onchange="updateFetchPinButton()"></select></div>
+
+        <p class="small-muted" style="margin:14px 0 6px;">3. Data tambahan (opsional, terisi otomatis dari foto/NIK)</p>
+        <div class="field"><label>Tempat Lahir</label><input id="t_tempat_lahir"></div>
+        <div class="field"><label>Tanggal Lahir</label><input id="t_tgl_lahir" type="date"></div>
+        <div class="field">
+          <label>Jenis Kelamin</label>
+          <select id="t_jenis_kelamin">
+            <option value="">—</option>
+            <option>LAKI-LAKI</option>
+            <option>PEREMPUAN</option>
+          </select>
+        </div>
+        <div class="field"><label>Alamat (sesuai KTP)</label><textarea id="t_alamat" rows="2"></textarea></div>
+        <div class="field"><label>RT/RW</label><input id="t_rtrw" placeholder="006/008"></div>
+        <div class="field"><label>Kelurahan/Desa</label><input id="t_kel_desa"></div>
+        <div class="field"><label>Kecamatan <span class="small-muted">(dari NIK)</span></label><input id="t_kecamatan"></div>
+        <div class="field"><label>Kabupaten/Kota <span class="small-muted">(dari NIK)</span></label><input id="t_kabupaten_kota"></div>
+        <div class="field"><label>Provinsi <span class="small-muted">(dari NIK)</span></label><input id="t_provinsi"></div>
+        <div class="field"><label>Golongan Darah</label>
+          <select id="t_gol_darah">
+            <option value="">—</option>
+            <option>A</option><option>B</option><option>AB</option><option>O</option>
+          </select>
+        </div>
+        <div class="field"><label>Agama</label><input id="t_agama"></div>
+        <div class="field"><label>Status Perkawinan</label><input id="t_status_perkawinan"></div>
+        <div class="field"><label>Pekerjaan</label><input id="t_pekerjaan"></div>
+      </div>
+
+      <div class="col">
+        <h4>Status Penyewaan</h4>
+        <div class="field"><label>Tanggal Check-in</label><input id="t_checkin" type="date"></div>
+        <div class="field" id="t_sewa_field"><label>Sewa (Bulan)</label>
+          <select id="t_sewa_bulan">
+            <option value="1">1 bulan</option>
+            <option value="2">2 bulan</option>
+            <option value="3">3 bulan</option>
+            <option value="4">4 bulan</option>
+            <option value="5">5 bulan</option>
+            <option value="6">6 bulan</option>
+            <option value="7">7 bulan</option>
+            <option value="8">8 bulan</option>
+            <option value="9">9 bulan</option>
+            <option value="10">10 bulan</option>
+            <option value="11">11 bulan</option>
+            <option value="12">12 bulan</option>
+          </select>
+          <p class="small-muted" id="sewaHint" style="margin:4px 0 0;"></p>
+        </div>
+        <div class="field" id="t_payment_status_field"><label>Status Pembayaran</label>
+          <select id="t_payment_status"><option value="belum_bayar">Belum Bayar</option><option value="lunas">Lunas</option></select>
+          <p class="small-muted" id="paymentStatusHint" style="margin:4px 0 0;"></p>
+        </div>
+        <div class="field"><label>Jenis Kredensial</label>
+          <select id="t_cred_type" onchange="updateFetchPinButton()"><option value="card">Card</option><option value="pin">PIN</option></select>
+        </div>
+        <div class="field">
+          <label>Nilai Kredensial (dari Tuya Smart Life)</label>
+          <div style="display:flex; gap:8px;">
+            <input id="t_cred_value" placeholder="mis. 4821035 atau ID kartu" style="flex:1;">
+            <button type="button" class="btn ghost sm" id="fetchPinBtn" style="display:none; white-space:nowrap;" onclick="fetchPinFromHaos()">Ambil dari HAOS</button>
+          </div>
+          <p class="small-muted" id="fetchPinStatus"></p>
+        </div>
+        <div class="field"><label>Catatan</label><textarea id="t_notes" rows="2"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeTenantModal()">Batal</button>
+      <button class="btn" onclick="saveTenant()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- TENANT HISTORY MODAL -->
+<div class="modal-bg" id="tenantHistoryModalBg">
+  <div class="modal modal-wide">
+    <h3>Riwayat Penyewa</h3>
+    <p class="small-muted">Setiap penyewa otomatis tercatat di sini sejak check-in, dan tetap tersinkron saat ada perubahan (edit/checkout). Data di sini tidak pernah hilang — bahkan kalau penyewa itu nanti dihapus dari daftar aktif.</p>
+    <div style="display:flex; gap:10px; margin-bottom:14px;">
+      <input id="historySearchInput" placeholder="Cari nama, nomor kamar, telepon, atau NIK..." oninput="onHistorySearchInput()" style="flex:1;">
+      <button class="btn ghost" onclick="exportTenantHistoryCsv()" style="white-space:nowrap;">⬇ Export CSV</button>
+    </div>
+    <table>
+      <thead><tr><th>No. Kamar</th><th>Nama Penyewa</th><th>No. Telpon</th><th>Check-in</th><th>Check-out</th><th>Sewa (Bulan)</th><th>Status</th><th>KTP</th></tr></thead>
+      <tbody id="tenantHistoryBody"></tbody>
+    </table>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal('tenantHistoryModalBg')">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- TELEGRAM CHECKIN DRAFTS MODAL -->
+<div class="modal-bg" id="telegramDraftsModalBg">
+  <div class="modal modal-wide">
+    <h3>Draft Check-in dari Telegram</h3>
+    <p class="small-muted">Penghuni mengisi ini sendiri lewat Mini App Telegram. Periksa dulu sebelum disetujui — data belum masuk sebagai penyewa aktif.</p>
+    <div id="telegramDraftsEmpty" class="small-muted" style="padding:20px 0; text-align:center; display:none;">Tidak ada draft menunggu.</div>
+    <div id="telegramDraftsList"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal('telegramDraftsModalBg')">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- PHONE REGISTRY MODAL -->
+<div class="modal-bg" id="phoneRegistryModalBg">
+  <div class="modal modal-wide">
+    <h3>Database Nomor HP</h3>
+    <p class="small-muted">Nomor yang sudah kamu catat manual (mis. dari booking WhatsApp) — dipakai buat cocokkan otomatis dengan draft check-in dari Telegram.</p>
+
+    <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+      <input id="pr_phone" placeholder="Nomor HP, mis. 081234567890" style="flex:1; min-width:160px;">
+      <input id="pr_name" placeholder="Nama (opsional)" style="flex:1; min-width:160px;">
+      <input id="pr_notes" placeholder="Catatan (opsional)" style="flex:1; min-width:160px;">
+      <button class="btn" onclick="addPhoneRegistry()">Tambah</button>
+    </div>
+
+    <div id="phoneRegistryEmpty" class="small-muted" style="padding:20px 0; text-align:center; display:none;">Belum ada nomor terdaftar.</div>
+    <div id="phoneRegistryList"></div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal('phoneRegistryModalBg')">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- BOOKING REQUESTS MODAL -->
+<div class="modal-bg" id="bookingRequestsModalBg">
+  <div class="modal modal-wide">
+    <h3>Booking Masuk (dari Partner/Reseller)</h3>
+    <p class="small-muted">Pesan booking yang di-forward ke bot Telegram otomatis di-parse — cek dulu semua field sebelum dijadikan check-in, terutama Sewa (Bulan) yang cuma tebakan dari teks.</p>
+    <div id="bookingRequestsEmpty" class="small-muted" style="padding:20px 0; text-align:center; display:none;">Tidak ada booking menunggu.</div>
+    <div id="bookingRequestsList"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal('bookingRequestsModalBg')">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAYMENT MODAL -->
+<div class="modal-bg" id="paymentModalBg">
+  <div class="modal">
+    <h3 id="paymentModalTitle">Tambah Tagihan</h3>
+    <div class="form-grid">
+      <div class="field full"><label>No. Kamar</label><select id="p_room" onchange="onPaymentRoomChange()"></select></div>
+      <div class="field"><label>Nama Penyewa</label><input id="p_tenant_name_display" disabled></div>
+      <div class="field"><label>Sewa (Bulan)</label><input id="p_sewa_display" disabled></div>
+      <div class="field"><label>Check-in</label><input id="p_checkin_display" disabled></div>
+      <div class="field"><label>Check-out</label><input id="p_checkout_display" disabled></div>
+      <div class="field"><label>Jumlah (Rp)</label><input id="p_amount" type="number"></div>
+      <div class="field"><label>Status</label>
+        <select id="p_status" onchange="onPaymentStatusChange()"><option value="belum_bayar">Belum Bayar</option><option value="lunas">Lunas</option></select>
+      </div>
+      <div class="field"><label>Tanggal Bayar</label><input id="p_paid_date" type="date"></div>
+      <div class="field"><label>Metode</label><input id="p_method" placeholder="Transfer / Tunai"></div>
+      <div class="field full"><label>Catatan</label><textarea id="p_notes" rows="2"></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal('paymentModalBg')">Batal</button>
+      <button class="btn" onclick="savePayment()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD USER MODAL -->
+<div class="modal-bg" id="userModalBg">
+  <div class="modal" style="max-width:400px;">
+    <h3>Tambah Akun Admin</h3>
+    <div class="form-grid full">
+      <div class="field"><label>Username</label><input id="nu_username"></div>
+      <div class="field"><label>Password (min. 6 karakter)</label><input id="nu_password" type="password"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal('userModalBg')">Batal</button>
+      <button class="btn" onclick="saveNewUser()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /appRoot -->
+
+<script>
+const API = '';
+let rooms = [], tenants = [], payments = [];
+let ktpBlob = null;
+let currentTenantId = null;
+
+function fmtRp(n){ return 'Rp ' + Number(n||0).toLocaleString('id-ID'); }
+function closeModal(id){ document.getElementById(id).classList.remove('active'); }
+
+// ---------- Nav ----------
+function switchToView(viewName){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===viewName));
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+viewName).classList.add('active');
+}
+document.querySelectorAll('nav button').forEach(btn=>{
+  btn.addEventListener('click', ()=> switchToView(btn.dataset.view));
+});
+
+// ---------- Load data ----------
+async function loadAll(){
+  await Promise.all([loadDashboard(), loadRooms(), loadTenants(), loadPayments(), checkHaos(), refreshTelegramDraftBadge(), refreshBookingRequestBadge()]);
+}
+
+async function loadDashboard(){
+  const d = await fetch(API+'/api/dashboard').then(r=>r.json());
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="card" style="cursor:pointer;" onclick="switchToView('rooms')"><div class="num">${d.total_rooms}</div><div class="label">Total Kamar</div></div>
+    <div class="card good" style="cursor:pointer;" onclick="switchToView('rooms')"><div class="num">${d.occupied}</div><div class="label">Terisi</div></div>
+    <div class="card" style="cursor:pointer;" onclick="switchToView('rooms')"><div class="num">${d.vacant}</div><div class="label">Kosong</div></div>
+    <div class="card" style="cursor:pointer;" onclick="switchToView('tenants')"><div class="num">${d.active_tenants}</div><div class="label">Penyewa Aktif</div></div>
+    <div class="card warn" style="cursor:pointer;" onclick="switchToView('payments')"><div class="num">${d.unpaid_this_month}</div><div class="label">Belum Bayar Bulan Ini</div></div>
+    <div class="card warn" style="cursor:pointer;" onclick="switchToView('payments')"><div class="num">${d.overdue}</div><div class="label">Terlambat (Overdue)</div></div>
+  `;
+  document.getElementById('logsBody').innerHTML = d.recent_logs.length ? d.recent_logs.map(l=>`
+    <tr><td>${l.ts}</td><td>${l.event}</td><td>${l.detail||''}</td></tr>
+  `).join('') : '<tr><td colspan="3" class="empty">Belum ada aktivitas</td></tr>';
+}
+
+function stateBadge(state, onLabel, offLabel){
+  if(state === undefined || state === null) return '<span class="small-muted">tidak diketahui</span>';
+  const known = {locked: offLabel||'Terkunci', unlocked: onLabel||'Terbuka', on: onLabel||'Nyala', off: offLabel||'Mati'};
+  const cls = (state==='locked'||state==='off') ? 'checkout' : (state==='unlocked'||state==='on') ? 'lunas' : '';
+  const label = known[state] || state;
+  return cls ? `<span class="badge ${cls}">${label}</span>` : `<span class="small-muted">${label}</span>`;
+}
+
+let currentRoomFloor = 1;
+let currentTenantFloor = 1;
+let currentPaymentFloor = 1;
+let currentLockFloor = 1;
+
+function switchRoomFloorTab(floor){
+  currentRoomFloor = floor;
+  document.querySelectorAll('#view-rooms .floor-tab').forEach(b=>b.classList.toggle('active', Number(b.dataset.floor)===floor));
+  renderRoomsTable();
+}
+function switchTenantFloorTab(floor){
+  currentTenantFloor = floor;
+  document.querySelectorAll('#view-tenants .floor-tab').forEach(b=>b.classList.toggle('active', Number(b.dataset.floor)===floor));
+  renderTenantsTable();
+}
+function switchPaymentFloorTab(floor){
+  currentPaymentFloor = floor;
+  document.querySelectorAll('#view-payments .floor-tab').forEach(b=>b.classList.toggle('active', Number(b.dataset.floor)===floor));
+  renderPaymentsTable();
+}
+function switchLockFloorTab(floor){
+  currentLockFloor = floor;
+  document.querySelectorAll('#view-locks .floor-tab').forEach(b=>b.classList.toggle('active', Number(b.dataset.floor)===floor));
+  renderLocksTable();
+}
+
+function renderRoomsTable(){
+  const floorRooms = rooms.filter(r=>r.floor===currentRoomFloor);
+  document.getElementById('roomsBody').innerHTML = floorRooms.length ? floorRooms.map(r=>`
+    <tr>
+      <td><a href="javascript:void(0)" onclick="editRoom(${r.id})" style="color:var(--honey); font-weight:600; text-decoration:none;">${r.room_number}</a></td>
+      <td>${fmtRp(r.price_monthly)}</td>
+      <td><span class="badge ${r.tenant_id? 'terisi':'kosong'}">${r.tenant_id? 'Terisi':'Kosong'}</span></td>
+      <td>${r.tenant_name||'-'}</td>
+      <td>${r.has_water_heater ? '<span class="badge lunas">Ada</span>' : '<span class="small-muted">-</span>'}</td>
+      <td>${r.wifi_password||'-'}</td>
+      <td>${r.haos_lock_entity_id||'-'}</td>
+      <td>${stateBadge(r.lock_state, 'Terbuka', 'Terkunci')}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="9" class="empty">Belum ada kamar di lantai ini.</td></tr>';
+}
+
+function renderLocksTable(){
+  const floorRooms = rooms.filter(r=>r.floor===currentLockFloor);
+  document.getElementById('locksBody').innerHTML = floorRooms.length ? floorRooms.map(r=>`
+    <tr>
+      <td>${r.room_number}</td>
+      <td>${r.haos_lock_entity_id||'<span class="small-muted">belum dipetakan</span>'}</td>
+      <td>${stateBadge(r.lock_state, 'Terbuka', 'Terkunci')}</td>
+      <td>
+        <button class="btn sm" ${!r.haos_lock_entity_id?'disabled':''} onclick="lockAction(${r.id},'unlock')">Buka</button>
+        <button class="btn ghost sm" ${!r.haos_lock_entity_id?'disabled':''} onclick="lockAction(${r.id},'lock')">Kunci</button>
+      </td>
+      <td>${r.haos_wifi_entity_id||'<span class="small-muted">belum dipetakan</span>'}</td>
+      <td>${stateBadge(r.wifi_state, 'Nyala', 'Mati')}</td>
+      <td>
+        <button class="btn sm" ${!r.haos_wifi_entity_id?'disabled':''} onclick="wifiAction(${r.id},'on')">Nyalakan</button>
+        <button class="btn ghost sm" ${!r.haos_wifi_entity_id?'disabled':''} onclick="wifiAction(${r.id},'off')">Matikan</button>
+      </td>
+    </tr>
+  `).join('') : '<tr><td colspan="7" class="empty">Belum ada kamar di lantai ini.</td></tr>';
+}
+
+async function loadRooms(){
+  rooms = await fetch(API+'/api/rooms').then(r=>r.json());
+  renderRoomsTable();
+
+  const roomSelect = document.getElementById('t_room');
+  roomSelect.innerHTML = '<option value="">— Belum ditentukan —</option>' +
+    rooms.map(r=>`<option value="${r.id}" ${(r.tenant_id && r.tenant_id!==editingTenantId)?'disabled':''}>${r.room_number}${r.tenant_id? ` (terisi: ${r.tenant_name})`:''}</option>`).join('');
+
+  renderLocksTable();
+}
+
+function renderTenantsTable(){
+  const floorTenants = tenants.filter(t=>t.floor===currentTenantFloor);
+  document.getElementById('tenantsBody').innerHTML = floorTenants.length ? floorTenants.map(t=>`
+    <tr>
+      <td><a href="javascript:void(0)" onclick="editTenant(${t.id})" style="color:var(--honey); font-weight:600; text-decoration:none;">${t.room_number||'-'}</a></td>
+      <td>${escapeHtml(t.full_name)}${t.telegram_username ? ` <span class="badge" title="Daftar via Mini App Telegram (@${escapeHtml(t.telegram_username)})${t.telegram_submitted_at ? ', '+escapeHtml(t.telegram_submitted_at) : ''}" style="background:var(--panel-2); color:var(--honey); font-size:11px; padding:2px 7px; border:1px solid var(--line);">📲 Telegram</span>` : ''}</td>
+      <td>${t.phone||'-'}</td>
+      <td>${t.checkin_date||'-'}</td>
+      <td>${t.sewa_bulan ? t.sewa_bulan+' bulan' : '-'}</td>
+      <td><span class="badge ${t.status}">${t.status==='aktif'?'Aktif':'Checkout'}</span></td>
+      <td>${t.ktp_photo_path? `<img src="/api/ktp-photos/${t.ktp_photo_path}" style="width:34px;height:24px;object-fit:cover;border-radius:4px;">` : '-'}</td>
+      <td>${t.credential_type? (t.credential_type.toUpperCase()+': '+(t.credential_value||'-')) : '-'}</td>
+      <td>
+        ${t.status==='aktif' ? `<button class="btn ghost sm" onclick="checkoutTenant(${t.id})">Checkout</button>` : ''}
+        <button class="btn ghost sm" onclick="deleteTenant(${t.id})">Hapus</button>
+      </td>
+    </tr>
+  `).join('') : '<tr><td colspan="9" class="empty">Belum ada penyewa di lantai ini.</td></tr>';
+}
+
+async function loadTenants(){
+  tenants = await fetch(API+'/api/tenants').then(r=>r.json());
+  renderTenantsTable();
+
+  const tenantSelect = document.getElementById('p_room');
+  tenantSelect.innerHTML = '<option value="">— Pilih kamar —</option>' +
+    tenants.filter(t=>t.status==='aktif').map(t=>`<option value="${t.id}">${t.room_number||'-'} — ${t.full_name}</option>`).join('');
+}
+
+function renderPaymentsTable(){
+  const today = new Date().toISOString().slice(0,10);
+  const floorPayments = payments.filter(p=>p.floor===currentPaymentFloor);
+  document.getElementById('paymentsBody').innerHTML = floorPayments.length ? floorPayments.map(p=>{
+    const isOverdue = p.status==='belum_bayar' && p.due_date && p.due_date < today;
+    return `
+    <tr>
+      <td>${p.room_id ? `<a href="javascript:void(0)" onclick="editPayment(${p.id})" style="color:var(--honey); font-weight:600; text-decoration:none;">${p.room_number||'-'}</a>` : (p.room_number||'-')}</td>
+      <td>${p.full_name}<div class="small-muted">Periode: ${p.period}</div></td>
+      <td>${p.sewa_bulan ? p.sewa_bulan+' bulan' : '-'}</td>
+      <td>${p.checkin_date||'-'}</td>
+      <td>${p.checkout_estimate||'-'}</td>
+      <td>${fmtRp(p.amount)}</td>
+      <td><span class="badge ${p.status}">${p.status==='lunas'?'Lunas':(isOverdue?'Terlambat':'Belum Bayar')}</span>${isOverdue?` <span class="small-muted" style="color:var(--danger);">(jatuh tempo ${p.due_date})</span>`:''}</td>
+      <td>${p.paid_date||'-'}</td>
+      <td>
+        ${p.status==='belum_bayar' ? `<button class="btn sm" onclick="markPaid(${p.id})">Tandai Lunas</button>` : ''}
+        <button class="btn ghost sm" onclick="deletePayment(${p.id})">Hapus</button>
+      </td>
+    </tr>
+  `;}).join('') : '<tr><td colspan="9" class="empty">Belum ada tagihan di lantai ini.</td></tr>';
+}
+
+async function loadPayments(){
+  payments = await fetch(API+'/api/payments').then(r=>r.json());
+  renderPaymentsTable();
+}
+
+async function checkHaos(){
+  const dot = document.getElementById('haosDot'), text = document.getElementById('haosText');
+  try{
+    const s = await fetch(API+'/api/haos/status').then(r=>r.json());
+    dot.className = 'dot ' + (s.connected ? 'on':'off');
+    text.textContent = s.connected ? 'HAOS terhubung' : 'HAOS tidak terhubung';
+  }catch(e){
+    dot.className='dot off'; text.textContent='HAOS tidak terhubung';
+  }
+}
+
+// ---------- Rooms CRUD ----------
+let editingRoomId = null;
+
+function openRoomModal(){
+  editingRoomId = null;
+  document.getElementById('roomModalTitle').textContent = 'Tambah Kamar';
+  ['r_number','r_floor','r_price','r_lock','r_wifi_password','r_wifi_entity','r_notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('r_floor').value = currentRoomFloor;
+  document.getElementById('r_water_heater').value = '0';
+  document.getElementById('roomModalBg').classList.add('active');
+  loadEntityDatalists();
+}
+function editRoom(roomId){
+  const r = rooms.find(x=>x.id===roomId);
+  if(!r) return;
+  editingRoomId = roomId;
+  document.getElementById('roomModalTitle').textContent = `Edit Kamar ${r.room_number}`;
+  document.getElementById('r_number').value = r.room_number;
+  document.getElementById('r_floor').value = r.floor;
+  document.getElementById('r_price').value = r.price_monthly;
+  document.getElementById('r_lock').value = r.haos_lock_entity_id || '';
+  document.getElementById('r_wifi_password').value = r.wifi_password || '';
+  document.getElementById('r_wifi_entity').value = r.haos_wifi_entity_id || '';
+  document.getElementById('r_water_heater').value = r.has_water_heater ? '1' : '0';
+  document.getElementById('r_notes').value = r.notes || '';
+  document.getElementById('roomModalBg').classList.add('active');
+  loadEntityDatalists();
+}
+async function loadEntityDatalists(){
+  const statusEl = document.getElementById('entityListStatus');
+  statusEl.textContent = 'Memuat daftar entity dari HAOS…';
+  try{
+    const [locks, wifis] = await Promise.all([
+      fetch(API+'/api/haos/lock-entities').then(r=>r.json()),
+      fetch(API+'/api/haos/wifi-entities').then(r=>r.json()),
+    ]);
+    document.getElementById('lockEntitiesDatalist').innerHTML = locks.map(e=>`<option value="${e.entity_id}">${e.attributes && e.attributes.friendly_name ? e.attributes.friendly_name : ''} (${e.state})</option>`).join('');
+    document.getElementById('wifiEntitiesDatalist').innerHTML = wifis.map(e=>`<option value="${e.entity_id}">${e.attributes && e.attributes.friendly_name ? e.attributes.friendly_name : ''} (${e.state})</option>`).join('');
+    if(locks.length === 0 && wifis.length === 0){
+      statusEl.textContent = 'Tidak ada entity ditemukan dari HAOS — cek koneksi HAOS, atau ketik entity ID manual.';
+    } else {
+      statusEl.textContent = `Ditemukan ${locks.length} lock entity dan ${wifis.length} wifi/switch entity dari HAOS — bisa dipilih dari daftar saran, atau ketik manual.`;
+    }
+  }catch(e){
+    statusEl.textContent = 'Gagal memuat daftar entity dari HAOS — bisa tetap ketik entity ID manual.';
+  }
+}
+async function saveRoom(){
+  const body = {
+    room_number: document.getElementById('r_number').value,
+    floor: Number(document.getElementById('r_floor').value)||1,
+    price_monthly: Number(document.getElementById('r_price').value)||0,
+    haos_lock_entity_id: document.getElementById('r_lock').value||null,
+    haos_wifi_ssid: null,
+    wifi_password: document.getElementById('r_wifi_password').value||null,
+    haos_wifi_entity_id: document.getElementById('r_wifi_entity').value||null,
+    has_water_heater: document.getElementById('r_water_heater').value === '1',
+    notes: document.getElementById('r_notes').value||null,
+  };
+  if(!body.room_number){ alert('Nomor kamar wajib diisi'); return; }
+  const url = editingRoomId ? `${API}/api/rooms/${editingRoomId}` : API+'/api/rooms';
+  const method = editingRoomId ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  if(!res.ok){ const e = await res.json(); alert(e.detail||'Gagal menyimpan'); return; }
+  closeModal('roomModalBg');
+  await Promise.all([loadRooms(), loadDashboard()]);
+}
+
+// ---------- Tenants CRUD ----------
+let editingTenantId = null;
+
+function openTenantModal(){
+  editingTenantId = null;
+  pendingApproveDraftId = null;
+  pendingConvertBookingId = null;
+  document.getElementById('tenantModalTitle').textContent = 'Check-in Penyewa Baru';
+  ['t_phone','t_cred_value','t_nik','t_ktp_nama','t_tempat_lahir','t_tgl_lahir','t_jenis_kelamin','t_alamat','t_rtrw','t_kel_desa','t_kecamatan','t_kabupaten_kota','t_provinsi','t_gol_darah','t_agama','t_status_perkawinan','t_pekerjaan','t_notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('nikStatus').textContent = '';
+  document.getElementById('t_room').value='';
+  document.getElementById('t_checkin').value = new Date().toISOString().slice(0,10);
+  document.getElementById('t_cred_type').value='card';
+  document.getElementById('t_sewa_bulan').value='1';
+  document.getElementById('t_payment_status').value='belum_bayar';
+  document.getElementById('t_sewa_field').style.display='';
+  document.getElementById('t_payment_status_field').style.display='';
+  document.getElementById('sewaHint').textContent = 'Tagihan akan dibuat otomatis untuk semua bulan ini saat check-in disimpan.';
+  document.getElementById('paymentStatusHint').textContent = '';
+  retakeKtp();
+  ktpBlob = null;
+  document.getElementById('tenantModalBg').classList.add('active');
+  updateFetchPinButton();
+}
+function editTenant(tenantId){
+  const t = tenants.find(x=>x.id===tenantId);
+  if(!t) return;
+  editingTenantId = tenantId;
+  pendingApproveDraftId = null;
+  pendingConvertBookingId = null;
+  document.getElementById('tenantModalTitle').textContent = `Edit Penyewa: ${t.full_name}`;
+  document.getElementById('t_phone').value = t.phone||'';
+  document.getElementById('t_checkin').value = t.checkin_date||'';
+  document.getElementById('t_cred_type').value = t.credential_type||'card';
+  document.getElementById('t_cred_value').value = t.credential_value||'';
+  document.getElementById('t_nik').value = t.ktp_nik||'';
+  document.getElementById('t_ktp_nama').value = t.ktp_nama||t.full_name||'';
+  document.getElementById('t_tempat_lahir').value = t.ktp_tempat_lahir||'';
+  document.getElementById('t_tgl_lahir').value = t.ktp_tgl_lahir||'';
+  document.getElementById('t_jenis_kelamin').value = t.ktp_jenis_kelamin||'';
+  document.getElementById('t_alamat').value = t.ktp_alamat||'';
+  document.getElementById('t_rtrw').value = (t.ktp_rt||t.ktp_rw) ? `${t.ktp_rt||''}/${t.ktp_rw||''}` : '';
+  document.getElementById('t_kel_desa').value = t.ktp_kel_desa||'';
+  document.getElementById('t_kecamatan').value = t.ktp_kecamatan||'';
+  document.getElementById('t_kabupaten_kota').value = t.ktp_kabupaten_kota||'';
+  document.getElementById('t_provinsi').value = t.ktp_provinsi||'';
+  document.getElementById('t_gol_darah').value = t.ktp_gol_darah||'';
+  document.getElementById('t_agama').value = t.ktp_agama||'';
+  document.getElementById('t_status_perkawinan').value = t.ktp_status_perkawinan||'';
+  document.getElementById('t_pekerjaan').value = t.ktp_pekerjaan||'';
+  document.getElementById('t_notes').value = t.notes||'';
+  document.getElementById('t_sewa_bulan').value = t.sewa_bulan || 1;
+  document.getElementById('t_payment_status').value = 'belum_bayar';
+  document.getElementById('t_sewa_field').style.display='';
+  document.getElementById('t_payment_status_field').style.display='';
+  document.getElementById('sewaHint').textContent =
+    `Sekarang tercatat ${t.sewa_bulan||0} bulan. Kalau ditambah, tagihan bulan BARU saja yang dibuat — tagihan lama tidak berubah. Kalau dikurangi, tagihan lama tidak otomatis terhapus (kelola manual lewat menu Pembayaran).`;
+  document.getElementById('paymentStatusHint').textContent = 'Status ini hanya berlaku untuk tagihan bulan baru (kalau Sewa ditambah), bukan menimpa tagihan yang sudah ada.';
+  retakeKtp();
+  ktpBlob = null;
+  if(t.ktp_photo_path){
+    document.getElementById('ktpPreview').src = `/api/ktp-photos/${t.ktp_photo_path}`;
+    document.getElementById('ktpPreview').style.display='block';
+  }
+  document.getElementById('tenantModalBg').classList.add('active');
+  // populate room select first (loadRooms sudah jalan di awal), baru set value-nya
+  document.getElementById('t_room').value = t.room_id || '';
+  updateFetchPinButton();
+}
+function updateFetchPinButton(){
+  const type = document.getElementById('t_cred_type').value;
+  const roomId = document.getElementById('t_room').value;
+  const room = rooms.find(r=>r.id===Number(roomId));
+  const btn = document.getElementById('fetchPinBtn');
+  const statusEl = document.getElementById('fetchPinStatus');
+  if(type === 'pin' && room && room.haos_lock_entity_id){
+    btn.style.display = 'inline-block';
+  } else {
+    btn.style.display = 'none';
+    statusEl.textContent = '';
+  }
+}
+async function fetchPinFromHaos(){
+  const roomId = document.getElementById('t_room').value;
+  const room = rooms.find(r=>r.id===Number(roomId));
+  const statusEl = document.getElementById('fetchPinStatus');
+  if(!room || !room.haos_lock_entity_id){
+    statusEl.textContent = 'Kamar ini belum punya lock entity HAOS.';
+    return;
+  }
+  statusEl.textContent = 'Membaca dari HAOS…';
+  try{
+    const res = await fetch(API+`/api/haos/lock-pin/${encodeURIComponent(room.haos_lock_entity_id)}`);
+    const data = await res.json();
+    if(!res.ok){ statusEl.textContent = data.detail || 'Gagal mengambil PIN dari HAOS.'; return; }
+    if(data.found){
+      const firstKey = Object.keys(data.candidates)[0];
+      document.getElementById('t_cred_value').value = data.candidates[firstKey];
+      statusEl.textContent = `Terisi otomatis dari atribut HAOS "${firstKey}" — cek ulang sebelum simpan.`;
+    } else {
+      statusEl.textContent = data.message || 'Tidak ditemukan atribut PIN pada entity ini, isi manual.';
+    }
+  }catch(e){
+    statusEl.textContent = 'Gagal menghubungi server.';
+  }
+}
+async function saveTenant(){
+  const name = document.getElementById('t_ktp_nama').value.trim();
+  const nik = document.getElementById('t_nik').value.trim();
+  const phone = document.getElementById('t_phone').value.trim();
+  const roomId = document.getElementById('t_room').value;
+
+  const missing = [];
+  if(!name) missing.push('Nama (sesuai KTP)');
+  if(!nik || nik.replace(/\D/g,'').length !== 16) missing.push('NIK (harus 16 digit)');
+  if(!phone) missing.push('Nomor Telepon');
+  if(!roomId) missing.push('Nomor Kamar');
+  if(missing.length){ alert('Data wajib belum lengkap:\n- ' + missing.join('\n- ')); return; }
+
+  const rtrwRaw = document.getElementById('t_rtrw').value.trim();
+  const rtrwParts = rtrwRaw.split(/[/\\]/).map(s=>s.trim());
+  const rt = rtrwParts[0] || null;
+  const rw = rtrwParts[1] || null;
+
+  const body = {
+    full_name: name,
+    phone: phone||null,
+    email: null,
+    room_id: roomId || null,
+    checkin_date: document.getElementById('t_checkin').value||null,
+    sewa_bulan: Number(document.getElementById('t_sewa_bulan').value)||1,
+    payment_status: document.getElementById('t_payment_status').value,
+    credential_type: document.getElementById('t_cred_type').value,
+    credential_value: document.getElementById('t_cred_value').value||null,
+    ktp_nik: nik||null,
+    ktp_nama: name||null,
+    ktp_tempat_lahir: document.getElementById('t_tempat_lahir').value||null,
+    ktp_tgl_lahir: document.getElementById('t_tgl_lahir').value||null,
+    ktp_jenis_kelamin: document.getElementById('t_jenis_kelamin').value||null,
+    ktp_alamat: document.getElementById('t_alamat').value||null,
+    ktp_rt: rt,
+    ktp_rw: rw,
+    ktp_kel_desa: document.getElementById('t_kel_desa').value||null,
+    ktp_kecamatan: document.getElementById('t_kecamatan').value||null,
+    ktp_kabupaten_kota: document.getElementById('t_kabupaten_kota').value||null,
+    ktp_provinsi: document.getElementById('t_provinsi').value||null,
+    ktp_gol_darah: document.getElementById('t_gol_darah').value||null,
+    ktp_agama: document.getElementById('t_agama').value||null,
+    ktp_status_perkawinan: document.getElementById('t_status_perkawinan').value||null,
+    ktp_pekerjaan: document.getElementById('t_pekerjaan').value||null,
+    notes: document.getElementById('t_notes').value||null,
+  };
+  const url = editingTenantId ? `${API}/api/tenants/${editingTenantId}` : API+'/api/tenants';
+  const method = editingTenantId ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const data = await res.json();
+  if(!res.ok){ alert(data.detail||'Gagal menyimpan'); return; }
+  const tenantIdForPhoto = editingTenantId || data.id;
+  if(ktpBlob && tenantIdForPhoto){
+    const fd = new FormData();
+    fd.append('file', ktpBlob, 'ktp.jpg');
+    await fetch(API+`/api/tenants/${tenantIdForPhoto}/ktp-photo`, {method:'POST', body: fd});
+  }
+  if(pendingApproveDraftId && !editingTenantId && data.id){
+    await fetch(API+`/api/telegram/checkin-drafts/${pendingApproveDraftId}/approve?tenant_id=${data.id}`, {method:'POST'});
+    pendingApproveDraftId = null;
+    await refreshTelegramDraftBadge();
+  }
+  if(pendingConvertBookingId && !editingTenantId && data.id){
+    await fetch(API+`/api/booking-requests/${pendingConvertBookingId}/convert?tenant_id=${data.id}`, {method:'POST'});
+    pendingConvertBookingId = null;
+    await refreshBookingRequestBadge();
+  }
+  stopKtpCam();
+  closeModal('tenantModalBg');
+  await Promise.all([loadTenants(), loadRooms(), loadDashboard(), loadPayments()]);
+}
+function closeTenantModal(){
+  pendingApproveDraftId = null;
+  pendingConvertBookingId = null;
+  stopKtpCam();
+  closeModal('tenantModalBg');
+}
+async function checkoutTenant(id){
+  if(!confirm('Checkout penyewa ini? Ingat nonaktifkan Card/PIN secara manual di Tuya Smart Life.')) return;
+  await fetch(API+`/api/tenants/${id}/checkout`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({})});
+  await Promise.all([loadTenants(), loadRooms(), loadDashboard()]);
+}
+async function deleteTenant(id){
+  if(!confirm('Hapus penyewa ini dari daftar aktif? Data tetap akan disimpan di Riwayat Penyewa, tidak hilang permanen.')) return;
+  await fetch(API+'/api/tenants/'+id, {method:'DELETE'});
+  await Promise.all([loadTenants(), loadRooms(), loadDashboard()]);
+}
+
+// ---------- Draft Check-in dari Telegram Mini App ----------
+let pendingApproveDraftId = null;
+let pendingConvertBookingId = null;
+
+async function refreshTelegramDraftBadge(){
+  try{
+    const res = await fetch(API+'/api/telegram/checkin-drafts?status=pending');
+    if(!res.ok) return;
+    const drafts = await res.json();
+    const btn = document.getElementById('telegramDraftBtn');
+    const badge = document.getElementById('telegramDraftBadge');
+    if(drafts.length > 0){
+      btn.style.display = 'inline-flex';
+      badge.textContent = drafts.length;
+    } else {
+      btn.style.display = 'none';
+    }
+  }catch(e){ /* diam-diam gagal, tidak mengganggu tampilan lain */ }
+}
+
+async function openTelegramDraftsModal(){
+  document.getElementById('telegramDraftsModalBg').classList.add('active');
+  await renderTelegramDrafts();
+}
+
+async function renderTelegramDrafts(){
+  const listEl = document.getElementById('telegramDraftsList');
+  const emptyEl = document.getElementById('telegramDraftsEmpty');
+  const res = await fetch(API+'/api/telegram/checkin-drafts?status=pending');
+  const drafts = await res.json();
+
+  if(drafts.length === 0){
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  listEl.innerHTML = drafts.map(d => {
+    const match = d.phone_registry_match;
+    const phoneBadge = match
+      ? `<span class="badge" style="background:var(--moss); color:#fff; font-size:12px; padding:2px 8px;">✅ Terdaftar${match.name ? ': '+escapeHtml(match.name) : ''}</span>`
+      : `<span class="badge" style="background:var(--danger); color:#fff; font-size:12px; padding:2px 8px;">⚠️ Belum terdaftar</span>`;
+    return `
+    <div class="card" style="margin-bottom:12px; display:flex; gap:14px; align-items:flex-start;">
+      ${d.ktp_photo_path ? `<img src="/api/ktp-photos/${d.ktp_photo_path}" style="width:110px; border-radius:8px; flex:none;">` : ''}
+      <div style="flex:1; min-width:0;">
+        <div style="font-weight:700; margin-bottom:2px;">${escapeHtml(d.ktp_nama||'(nama belum ada)')}</div>
+        <div class="small-muted">NIK: ${escapeHtml(d.ktp_nik||'-')} · HP: ${escapeHtml(d.phone||'-')} ${phoneBadge}</div>
+        ${match && match.notes ? `<div class="small-muted">Catatan: ${escapeHtml(match.notes)}</div>` : ''}
+        <div class="small-muted">Telegram: @${escapeHtml(d.telegram_username||d.telegram_user_id)}</div>
+        <div class="small-muted">${escapeHtml(d.ktp_kecamatan||'')} ${escapeHtml(d.ktp_kabupaten_kota||'')} ${escapeHtml(d.ktp_provinsi||'')}</div>
+        <div style="margin-top:8px; display:flex; gap:8px;">
+          <button class="btn sm" onclick='approveTelegramDraft(${d.id}, ${JSON.stringify(d)})'>Setujui &amp; Lanjut Check-in</button>
+          <button class="btn ghost sm" onclick="rejectTelegramDraft(${d.id})">Tolak</button>
+        </div>
+      </div>
+    </div>
+  `;}).join('');
+}
+
+// ---------- Database Nomor HP (manual, utk dicocokkan dgn draft Telegram) ----------
+async function openPhoneRegistryModal(){
+  document.getElementById('phoneRegistryModalBg').classList.add('active');
+  await renderPhoneRegistry();
+}
+
+async function renderPhoneRegistry(){
+  const listEl = document.getElementById('phoneRegistryList');
+  const emptyEl = document.getElementById('phoneRegistryEmpty');
+  const res = await fetch(API+'/api/phone-registry');
+  const items = await res.json();
+
+  if(items.length === 0){
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  listEl.innerHTML = items.map(it => `
+    <div class="card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <div>
+        <div style="font-weight:600;">${escapeHtml(it.phone)} ${it.name ? '— '+escapeHtml(it.name) : ''}</div>
+        ${it.notes ? `<div class="small-muted">${escapeHtml(it.notes)}</div>` : ''}
+      </div>
+      <button class="btn ghost sm" onclick="deletePhoneRegistry(${it.id})">Hapus</button>
+    </div>
+  `).join('');
+}
+
+async function addPhoneRegistry(){
+  const phone = document.getElementById('pr_phone').value.trim();
+  if(!phone){ alert('Nomor HP wajib diisi.'); return; }
+  const body = {
+    phone,
+    name: document.getElementById('pr_name').value.trim() || null,
+    notes: document.getElementById('pr_notes').value.trim() || null,
+  };
+  const res = await fetch(API+'/api/phone-registry', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body),
+  });
+  if(!res.ok){ const d = await res.json(); alert(d.detail || 'Gagal menambahkan.'); return; }
+  document.getElementById('pr_phone').value = '';
+  document.getElementById('pr_name').value = '';
+  document.getElementById('pr_notes').value = '';
+  await renderPhoneRegistry();
+}
+
+async function deletePhoneRegistry(id){
+  if(!confirm('Hapus nomor ini dari database?')) return;
+  await fetch(API+`/api/phone-registry/${id}`, {method:'DELETE'});
+  await renderPhoneRegistry();
+}
+
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function approveTelegramDraft(draftId, draft){
+  closeModal('telegramDraftsModalBg');
+  openTenantModal(); // reset ke form check-in kosong seperti biasa
+  pendingApproveDraftId = draftId;
+  document.getElementById('t_ktp_nama').value = draft.ktp_nama || '';
+  document.getElementById('t_nik').value = draft.ktp_nik || '';
+  document.getElementById('t_phone').value = draft.phone || '';
+  document.getElementById('t_tempat_lahir').value = draft.ktp_tempat_lahir || '';
+  document.getElementById('t_tgl_lahir').value = draft.ktp_tgl_lahir || '';
+  document.getElementById('t_jenis_kelamin').value = draft.ktp_jenis_kelamin || '';
+  document.getElementById('t_alamat').value = draft.ktp_alamat || '';
+  document.getElementById('t_kecamatan').value = draft.ktp_kecamatan || '';
+  document.getElementById('t_kabupaten_kota').value = draft.ktp_kabupaten_kota || '';
+  document.getElementById('t_provinsi').value = draft.ktp_provinsi || '';
+
+  if(draft.ktp_photo_path){
+    document.getElementById('ktpPreview').src = `/api/ktp-photos/${draft.ktp_photo_path}`;
+    document.getElementById('ktpPreview').style.display = 'block';
+
+    // Draft dari Mini App sekarang cuma berisi foto (tanpa NIK/nama sama
+    // sekali -- Mini App Telegram sudah tidak OCR di sisi Railway lagi).
+    // Kalau NIK belum ada, ambil foto ini sebagai blob & jalankan OCR
+    // PaddleOCR di server lokal secara OTOMATIS, supaya admin tetap dapat
+    // pengalaman auto-fill yang sama seperti sebelumnya.
+    if (!draft.ktp_nik){
+      document.getElementById('ocrStatus').textContent = 'Membaca foto dari draft Telegram…';
+      try{
+        const res = await fetch(`/api/ktp-photos/${draft.ktp_photo_path}`);
+        const blob = await res.blob();
+        ktpBlob = blob; // supaya ikut tersimpan ulang saat form disimpan
+        await runKtpOcr(blob);
+      }catch(e){
+        document.getElementById('ocrStatus').textContent = 'Gagal membaca foto draft otomatis — cek NIK/data manual.';
+      }
+    }
+  }
+  document.getElementById('nikStatus').textContent = draft.ktp_nik
+    ? 'Diisi dari draft Telegram — pilih Kamar & lengkapi sisanya, lalu Simpan untuk menyelesaikan check-in.'
+    : 'Draft dari Mini App cuma berisi foto — sedang membaca otomatis lewat OCR di atas.';
+}
+
+async function rejectTelegramDraft(draftId){
+  if(!confirm('Tolak draft ini? Penghuni perlu mengisi ulang lewat bot kalau perlu.')) return;
+  await fetch(API+`/api/telegram/checkin-drafts/${draftId}/reject`, {method:'POST'});
+  await renderTelegramDrafts();
+  await refreshTelegramDraftBadge();
+}
+
+// ---------- Booking Masuk (dari partner/reseller, auto-parse via bot Telegram) ----------
+async function refreshBookingRequestBadge(){
+  try{
+    const res = await fetch(API+'/api/booking-requests?status=pending');
+    if(!res.ok) return;
+    const bookings = await res.json();
+    const btn = document.getElementById('bookingRequestBtn');
+    const badge = document.getElementById('bookingRequestBadge');
+    if(bookings.length > 0){
+      btn.style.display = 'inline-flex';
+      badge.textContent = bookings.length;
+    } else {
+      btn.style.display = 'none';
+    }
+  }catch(e){ /* diam-diam gagal, tidak mengganggu tampilan lain */ }
+}
+
+async function openBookingRequestsModal(){
+  document.getElementById('bookingRequestsModalBg').classList.add('active');
+  await renderBookingRequests();
+}
+
+async function renderBookingRequests(){
+  const listEl = document.getElementById('bookingRequestsList');
+  const emptyEl = document.getElementById('bookingRequestsEmpty');
+  const res = await fetch(API+'/api/booking-requests?status=pending');
+  const bookings = await res.json();
+
+  if(bookings.length === 0){
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  listEl.innerHTML = bookings.map(b => {
+    const catatan = [];
+    if(!b.nama_penyewa) catatan.push('Nama tidak terbaca');
+    if(!b.nomor_kamar) catatan.push('Nomor kamar tidak terbaca');
+    if(!b.tanggal_masuk_iso) catatan.push('Tanggal tidak dikenali, cek manual');
+    const roomExists = rooms.some(r => r.room_number === b.nomor_kamar);
+    if(b.nomor_kamar && !roomExists) catatan.push(`Kamar ${b.nomor_kamar} tidak ditemukan di sistem`);
+    const warn = catatan.length
+      ? `<div class="small-muted" style="color:var(--danger);">⚠️ ${catatan.join(' · ')}</div>` : '';
+    return `
+    <div class="card" style="margin-bottom:12px;">
+      <div style="font-weight:700; margin-bottom:2px;">${escapeHtml(b.nama_penyewa||'(nama belum ada)')}</div>
+      <div class="small-muted">Kamar: ${escapeHtml(b.nomor_kamar||'-')} · HP: ${escapeHtml(b.no_hp||'-')} · Masuk: ${escapeHtml(b.tanggal_masuk||'-')}</div>
+      <div class="small-muted">Sewa: ${b.sewa_bulan||'?'} bulan (dari teks: "${escapeHtml(b.periode_sewa||'-')}") · ${escapeHtml(b.pembayaran||'-')}</div>
+      ${b.kendaraan ? `<div class="small-muted">Kendaraan: ${escapeHtml(b.kendaraan)}</div>` : ''}
+      ${b.nama_kos ? `<div class="small-muted">Sumber: ${escapeHtml(b.nama_kos)}</div>` : ''}
+      ${warn}
+      <div style="margin-top:8px; display:flex; gap:8px;">
+        <button class="btn sm" onclick='approveBookingRequest(${b.id}, ${JSON.stringify(b)})'>Lanjut Check-in</button>
+        <button class="btn ghost sm" onclick="rejectBookingRequest(${b.id})">Tolak</button>
+      </div>
+    </div>
+  `;}).join('');
+}
+
+function approveBookingRequest(bookingId, booking){
+  closeModal('bookingRequestsModalBg');
+  openTenantModal(); // reset ke form check-in kosong seperti biasa
+  pendingConvertBookingId = bookingId;
+  document.getElementById('t_ktp_nama').value = booking.nama_penyewa || '';
+  document.getElementById('t_phone').value = booking.no_hp || '';
+  if(booking.tanggal_masuk_iso) document.getElementById('t_checkin').value = booking.tanggal_masuk_iso;
+  if(booking.sewa_bulan) document.getElementById('t_sewa_bulan').value = String(booking.sewa_bulan);
+
+  // Coba cocokkan otomatis ke kamar yang sudah ada di sistem berdasar nomor.
+  const room = rooms.find(r => r.room_number === booking.nomor_kamar);
+  if(room) document.getElementById('t_room').value = room.id;
+
+  const catatan = [];
+  if(!room && booking.nomor_kamar) catatan.push(`kamar "${booking.nomor_kamar}" tidak ditemukan — pilih manual`);
+  if(!booking.tanggal_masuk_iso) catatan.push('tanggal masuk tidak terbaca — isi manual');
+  document.getElementById('nikStatus').textContent =
+    `Diisi dari booking partner (periode teks: "${booking.periode_sewa||'-'}", cek ulang jumlah bulan). `
+    + (catatan.length ? catatan.join(', ') + '. ' : '')
+    + 'NIK & data KTP tetap perlu diisi manual/OCR — booking ini tidak menyertakan foto KTP.';
+}
+
+async function rejectBookingRequest(bookingId){
+  if(!confirm('Tolak booking ini?')) return;
+  await fetch(API+`/api/booking-requests/${bookingId}/reject`, {method:'POST'});
+  await renderBookingRequests();
+  await refreshBookingRequestBadge();
+}
+
+// ---------- Riwayat Penyewa (histori, tidak pernah hilang, bisa dicari) ----------
+let tenantHistoryData = [];
+let historySearchDebounce = null;
+
+function openTenantHistoryModal(){
+  document.getElementById('historySearchInput').value = '';
+  loadTenantHistory();
+  document.getElementById('tenantHistoryModalBg').classList.add('active');
+}
+async function loadTenantHistory(){
+  const q = document.getElementById('historySearchInput').value.trim();
+  const url = q ? `${API}/api/tenants/history?q=${encodeURIComponent(q)}` : `${API}/api/tenants/history`;
+  tenantHistoryData = await fetch(url).then(r=>r.json());
+  renderTenantHistoryTable();
+}
+function onHistorySearchInput(){
+  clearTimeout(historySearchDebounce);
+  historySearchDebounce = setTimeout(loadTenantHistory, 250);
+}
+function exportTenantHistoryCsv(){
+  const q = document.getElementById('historySearchInput').value.trim();
+  const url = q ? `${API}/api/tenants/history/export?q=${encodeURIComponent(q)}` : `${API}/api/tenants/history/export`;
+  window.location.href = url;
+}
+function renderTenantHistoryTable(){
+  const sorted = tenantHistoryData;
+  document.getElementById('tenantHistoryBody').innerHTML = sorted.length ? sorted.map(t=>`
+    <tr>
+      <td>${t.room_number||'-'}</td>
+      <td>${t.full_name}</td>
+      <td>${t.phone||'-'}</td>
+      <td>${t.checkin_date||'-'}</td>
+      <td>${t.checkout_date||'-'}</td>
+      <td>${t.sewa_bulan ? t.sewa_bulan+' bulan' : '-'}</td>
+      <td><span class="badge ${t.status}">${t.status==='aktif'?'Aktif':'Checkout'}</span></td>
+      <td>${t.ktp_photo_path? `<img src="/api/ktp-photos/${t.ktp_photo_path}" style="width:34px;height:24px;object-fit:cover;border-radius:4px;">` : '-'}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="8" class="empty">Tidak ada data yang cocok.</td></tr>';
+}
+
+// ---------- Isi otomatis dari NIK (tanpa OCR) ----------
+// NIK cuma menyimpan kode wilayah s.d. kecamatan + tanggal lahir + jenis
+// kelamin — TIDAK menyimpan alamat jalan/RT/RW, jadi field itu sengaja
+// tidak disentuh di sini.
+let nikLookupTimer = null;
+function onNikInput(val){
+  clearTimeout(nikLookupTimer);
+  const digits = (val||'').replace(/\D/g,'');
+  if(digits.length !== 16){
+    document.getElementById('nikStatus').textContent = digits.length ? `${digits.length}/16 digit` : '';
+    return;
+  }
+  document.getElementById('nikStatus').textContent = 'Memeriksa NIK…';
+  nikLookupTimer = setTimeout(()=>lookupNik(digits), 350);
+}
+
+async function lookupNik(nik){
+  const statusEl = document.getElementById('nikStatus');
+  try{
+    const res = await fetch(API+'/api/nik/decode?nik='+encodeURIComponent(nik));
+    const d = await res.json();
+    if(d.tanggal_lahir) document.getElementById('t_tgl_lahir').value = d.tanggal_lahir;
+    if(d.jenis_kelamin) document.getElementById('t_jenis_kelamin').value = d.jenis_kelamin;
+    if(d.kecamatan) document.getElementById('t_kecamatan').value = d.kecamatan;
+    if(d.kabupaten_kota) document.getElementById('t_kabupaten_kota').value = d.kabupaten_kota;
+    if(d.provinsi) document.getElementById('t_provinsi').value = d.provinsi;
+
+    if(d.valid && d.kecamatan){
+      statusEl.textContent = `NIK valid — ${d.kecamatan}, ${d.kabupaten_kota} (${d.usia} th). Alamat tetap perlu diisi manual/OCR.`;
+      statusEl.style.color = 'var(--moss)';
+    } else if(d.valid){
+      statusEl.textContent = `NIK valid, tapi kecamatan tidak ada di tabel wilayah — isi manual. ${(d.catatan||[]).join(' ')}`;
+      statusEl.style.color = 'var(--honey)';
+    } else {
+      statusEl.textContent = 'NIK tidak valid: ' + (d.catatan||[]).join(' ');
+      statusEl.style.color = 'var(--danger)';
+    }
+  }catch(e){
+    statusEl.textContent = 'Gagal memeriksa NIK.';
+    statusEl.style.color = 'var(--danger)';
+  }
+}
+
+// ---------- KTP webcam capture ----------
+// Ambang & area crop bisa disetel di sini kalau posisi NIK pada kartu
+// yang dipakai agak berbeda dari e-KTP standar.
+const KTP_CFG = {
+  guideWidthPct : 0.82,      // lebar bingkai relatif thd frame video (cocokkan dgn CSS .ktp-guide)
+  cardAspect    : 85.6/54,   // rasio KTP ISO/IEC 7810 ID-1
+  nikBand       : { x0:0.03, x1:0.80, y0:0.13, y1:0.27 }, // relatif thd kartu
+  sharpReady    : 130,       // variance-of-Laplacian minimum utk dianggap tajam
+  glareMax      : 0.05,      // maks proporsi piksel nyaris putih penuh (silau)
+  lumMin        : 55, lumMax: 210,
+  stableFrames  : 8,         // frame berturut-turut lolos sblm auto-jepret
+  sampleWidth   : 300,       // lebar canvas analisis (kecil = murah di CPU)
+};
+
+let ktpStream = null, ktpRaf = null, ktpStable = 0, ktpCounting = false, ktpBusy = false;
+const ktpSampleCanvas = document.createElement('canvas');
+const ktpSampleCtx = ktpSampleCanvas.getContext('2d', {willReadFrequently:true});
+
+async function startKtpCam(){
+  try{
+    ktpStream = await navigator.mediaDevices.getUserMedia({
+      video:{ width:{ideal:2560}, height:{ideal:1440}, frameRate:{ideal:15} }
+    });
+  }catch(e){
+    alert('Tidak bisa mengakses kamera: '+e.message);
+    return;
+  }
+  const video = document.getElementById('ktpVideo');
+  video.srcObject = ktpStream;
+  await video.play().catch(()=>{});
+
+  // Percobaan kunci fokus & eksposur kontinu bila driver mengizinkan.
+  // Di Linux/Chrome ini SERING ditolak diam-diam — jangan andalkan ini
+  // sebagai satu-satunya solusi fokus; setel lewat v4l2-ctl di host
+  // kalau kamera terus buram (lihat README_KTP.md).
+  const track = ktpStream.getVideoTracks()[0];
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  const adv = [];
+  if (caps.focusMode && caps.focusMode.includes('continuous')) adv.push({focusMode:'continuous'});
+  if (caps.exposureMode && caps.exposureMode.includes('continuous')) adv.push({exposureMode:'continuous'});
+  if (adv.length) track.applyConstraints({advanced:adv}).catch(()=>{});
+
+  const s = track.getSettings();
+  const px = (s.width||0) * (s.height||0);
+  const resEl = document.getElementById('ktpResBadge');
+  resEl.textContent = `${s.width||'?'}×${s.height||'?'} @ ${Math.round(s.frameRate||0)}fps`;
+  resEl.className = 'small-muted' + (px < 1280*720 ? '' : '');
+  resEl.style.color = px >= 1920*1080 ? 'var(--moss)' : px >= 1280*720 ? 'var(--muted)' : 'var(--danger)';
+  if (px < 1280*720){
+    resEl.textContent += ' — resolusi rendah, cek v4l2-ctl --list-formats-ext di host';
+  }
+
+  document.getElementById('ktpStage').style.display='block';
+  document.getElementById('ktpMeters').style.display='flex';
+  document.getElementById('ktpAutoToggleWrap').style.display='flex';
+  document.getElementById('captureBtn').style.display='inline-block';
+  document.getElementById('ktpPreview').style.display='none';
+  ktpStable = 0;
+  cancelAnimationFrame(ktpRaf);
+  ktpTick();
+}
+
+/** Area kartu dlm koordinat piksel video asli, memperhitungkan object-fit:cover. */
+function ktpRoiInVideo(vw, vh){
+  const stageAspect = 4/3, videoAspect = vw/vh;
+  let visW = vw, visH = vh, offX = 0, offY = 0;
+  if (videoAspect > stageAspect){ visW = vh*stageAspect; offX = (vw-visW)/2; }
+  else { visH = vw/stageAspect; offY = (vh-visH)/2; }
+  const w = visW * KTP_CFG.guideWidthPct;
+  const h = w / KTP_CFG.cardAspect;
+  return { x: offX+(visW-w)/2, y: offY+(visH-h)/2, w, h };
+}
+
+/** Variance-of-Laplacian (ketajaman) + proporsi silau + luminansi rerata,
+ *  dihitung dari area kartu saja, per-frame, murah di CPU. */
+function ktpAnalyse(video){
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw) return null;
+  const roi = ktpRoiInVideo(vw, vh);
+  const w = KTP_CFG.sampleWidth, h = Math.round(w / KTP_CFG.cardAspect);
+  ktpSampleCanvas.width = w; ktpSampleCanvas.height = h;
+  ktpSampleCtx.drawImage(video, roi.x, roi.y, roi.w, roi.h, 0, 0, w, h);
+  const px = ktpSampleCtx.getImageData(0, 0, w, h).data;
+
+  const g = new Float32Array(w*h);
+  let sum = 0, hot = 0;
+  for (let i=0, p=0; i<px.length; i+=4, p++){
+    const y = 0.299*px[i] + 0.587*px[i+1] + 0.114*px[i+2];
+    g[p] = y; sum += y;
+    if (y > 246) hot++;
+  }
+  const lum = sum/(w*h), glare = hot/(w*h);
+
+  let ls=0, lss=0, n=0;
+  for (let y=1;y<h-1;y++) for (let x=1;x<w-1;x++){
+    const i=y*w+x, v=4*g[i]-g[i-1]-g[i+1]-g[i-w]-g[i+w];
+    ls+=v; lss+=v*v; n++;
+  }
+  const mean = ls/n;
+  return { sharp: lss/n - mean*mean, glare, lum };
+}
+
+function ktpSetBar(barId, valId, pct, state, text){
+  const bar = document.getElementById(barId);
+  bar.style.width = Math.max(2, Math.min(100, pct))+'%';
+  bar.className = state;
+  document.getElementById(valId).textContent = text;
+}
+
+function ktpTick(){
+  const video = document.getElementById('ktpVideo');
+  const m = ktpAnalyse(video);
+  const guide = document.getElementById('ktpGuide');
+  const dot = document.getElementById('ktpDot');
+  const hint = document.getElementById('ktpHintText');
+  const captureBtn = document.getElementById('captureBtn');
+
+  if (m){
+    const sharpOk = m.sharp >= KTP_CFG.sharpReady;
+    const glareOk = m.glare <= KTP_CFG.glareMax;
+    const lumOk = m.lum >= KTP_CFG.lumMin && m.lum <= KTP_CFG.lumMax;
+
+    ktpSetBar('ktpSharpBar','ktpSharpVal', m.sharp/KTP_CFG.sharpReady*60, sharpOk?'ok':'bad', Math.round(m.sharp));
+    ktpSetBar('ktpGlareBar','ktpGlareVal', 100-m.glare/KTP_CFG.glareMax*60, glareOk?'ok':'bad', (m.glare*100).toFixed(1)+'%');
+    ktpSetBar('ktpLumBar','ktpLumVal', m.lum/255*100, lumOk?'ok':'bad', Math.round(m.lum));
+
+    const ready = sharpOk && glareOk && lumOk;
+    guide.classList.toggle('ready', ready);
+    dot.classList.toggle('ok', ready);
+    captureBtn.disabled = !ready || ktpBusy;
+
+    if (ready){
+      hint.textContent = 'Siap — tahan posisi.';
+      ktpStable++;
+      if (document.getElementById('ktpAutoShot').checked && ktpStable>=KTP_CFG.stableFrames && !ktpCounting && !ktpBusy){
+        ktpRunCountdown();
+      }
+    } else {
+      ktpStable = 0;
+      hint.textContent = !sharpOk ? 'Kurang tajam — dekatkan kartu / kunci fokus manual.'
+                        : !glareOk ? 'Ada pantulan — miringkan kartu, geser lampu ke samping.'
+                        : m.lum < KTP_CFG.lumMin ? 'Terlalu gelap — tambah cahaya.'
+                        : 'Terlalu terang — kurangi cahaya langsung.';
+    }
+  }
+  ktpRaf = requestAnimationFrame(ktpTick);
+}
+
+function ktpRunCountdown(){
+  ktpCounting = true;
+  let n = 3;
+  const el = document.getElementById('ktpCountdown');
+  el.textContent = n; el.classList.add('on');
+  const iv = setInterval(()=>{
+    if (!document.getElementById('ktpGuide').classList.contains('ready')){
+      clearInterval(iv); el.classList.remove('on'); ktpCounting=false; return;
+    }
+    if (--n <= 0){ clearInterval(iv); el.classList.remove('on'); ktpCounting=false; captureKtp(); }
+    else el.textContent = n;
+  }, 700);
+}
+
+function ktpCropToBlob(video, roi, type, q){
+  const c = document.createElement('canvas');
+  c.width = Math.round(roi.w); c.height = Math.round(roi.h);
+  c.getContext('2d').drawImage(video, roi.x, roi.y, roi.w, roi.h, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(res, type, q));
+}
+
+async function captureKtp(){
+  if (ktpBusy) return;
+  ktpBusy = true;
+  document.getElementById('captureBtn').disabled = true;
+  document.getElementById('ktpHintText').textContent = 'Memproses…';
+
+  const video = document.getElementById('ktpVideo');
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const card = ktpRoiInVideo(vw, vh);
+  const b = KTP_CFG.nikBand;
+  const strip = {
+    x: card.x + card.w*b.x0, y: card.y + card.h*b.y0,
+    w: card.w*(b.x1-b.x0), h: card.h*(b.y1-b.y0),
+  };
+
+  const [cardBlob, stripBlob] = await Promise.all([
+    ktpCropToBlob(video, card, 'image/jpeg', 0.95),
+    ktpCropToBlob(video, strip, 'image/png'),
+  ]);
+
+  ktpBlob = cardBlob;
+  const preview = document.getElementById('ktpPreview');
+  preview.src = URL.createObjectURL(cardBlob);
+  preview.style.display = 'block';
+
+  stopKtpCam();
+  document.getElementById('ktpStage').style.display='none';
+  document.getElementById('ktpMeters').style.display='none';
+  document.getElementById('ktpAutoToggleWrap').style.display='none';
+  document.getElementById('captureBtn').style.display='none';
+  document.getElementById('retakeBtn').style.display='inline-block';
+
+  await runKtpOcr(cardBlob, stripBlob);
+  ktpBusy = false;
+}
+
+async function handleKtpFileUpload(evt){
+  const file = evt.target.files[0];
+  evt.target.value = ''; // reset supaya file yang sama bisa dipilih ulang nanti
+  if(!file) return;
+
+  stopKtpCam();
+  document.getElementById('ktpStage').style.display='none';
+  document.getElementById('ktpMeters').style.display='none';
+  document.getElementById('ktpAutoToggleWrap').style.display='none';
+  document.getElementById('captureBtn').style.display='none';
+  document.getElementById('retakeBtn').style.display='inline-block';
+
+  let blob;
+  try{
+    // Decode lewat canvas: otomatis meluruskan orientasi EXIF & menyeragamkan
+    // ke JPEG (foto iPhone format HEIC juga aman kalau browser bisa decode-nya).
+    const bitmap = await createImageBitmap(file);
+    const maxW = 2200;
+    const scale = Math.min(1, maxW / bitmap.width);
+    const c = document.createElement('canvas');
+    c.width = Math.round(bitmap.width * scale);
+    c.height = Math.round(bitmap.height * scale);
+    c.getContext('2d').drawImage(bitmap, 0, 0, c.width, c.height);
+    blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
+  }catch(e){
+    blob = file; // fallback: kirim file asli apa adanya kalau browser tak sanggup decode
+  }
+
+  ktpBlob = blob;
+  const preview = document.getElementById('ktpPreview');
+  preview.src = URL.createObjectURL(blob);
+  preview.style.display = 'block';
+
+  // Tidak ada crop strip NIK terpisah di sini (tidak ada viewfinder utk
+  // menentukan posisinya) — OCR tetap jalan dari paragraf penuh saja,
+  // dan foto HP biasanya sudah cukup tajam untuk itu.
+  await runKtpOcr(blob, null);
+}
+
+async function runKtpOcr(blob, stripBlob){
+  const statusEl = document.getElementById('ocrStatus');
+  statusEl.textContent = 'Membaca data KTP…';
+  try{
+    const fd = new FormData();
+    fd.append('file', blob, 'ktp.jpg');
+    if (stripBlob) fd.append('nik_strip', stripBlob, 'nik.png');
+    const res = await fetch(API+'/api/ocr/ktp', {method:'POST', body: fd});
+    if(!res.ok){ statusEl.textContent = 'OCR gagal, isi manual.'; return; }
+    const d = await res.json();
+    let filled = 0;
+    if(d.nik){ document.getElementById('t_nik').value = d.nik; filled++; }
+    if(d.nama){ document.getElementById('t_ktp_nama').value = d.nama; filled++; }
+    if(d.tempat_lahir){ document.getElementById('t_tempat_lahir').value = d.tempat_lahir; filled++; }
+    if(d.tgl_lahir){ document.getElementById('t_tgl_lahir').value = d.tgl_lahir; filled++; }
+    if(d.alamat){ document.getElementById('t_alamat').value = d.alamat; filled++; }
+    if(d.rt && d.rw){ document.getElementById('t_rtrw').value = `${d.rt}/${d.rw}`; filled++; }
+    if(d.kel_desa){ document.getElementById('t_kel_desa').value = d.kel_desa; filled++; }
+    if(d.gol_darah){ document.getElementById('t_gol_darah').value = d.gol_darah; filled++; }
+    if(d.agama){ document.getElementById('t_agama').value = d.agama; filled++; }
+    if(d.status_perkawinan){ document.getElementById('t_status_perkawinan').value = d.status_perkawinan; filled++; }
+    if(d.pekerjaan){ document.getElementById('t_pekerjaan').value = d.pekerjaan; filled++; }
+    if(d.jenis_kelamin){ document.getElementById('t_jenis_kelamin').value = d.jenis_kelamin; filled++; }
+    if(d.kecamatan_nik){ document.getElementById('t_kecamatan').value = d.kecamatan_nik; filled++; }
+    if(d.kabupaten_kota_nik){ document.getElementById('t_kabupaten_kota').value = d.kabupaten_kota_nik; filled++; }
+    if(d.provinsi_nik){ document.getElementById('t_provinsi').value = d.provinsi_nik; filled++; }
+
+    let msg = filled>0 ? `Terisi otomatis (${filled} kolom) — cek ulang sebelum simpan.` : 'Tidak terbaca jelas, isi manual.';
+    if (d.nik_valid){
+      msg += ` NIK valid (${d.provinsi_nik}, ${d.jenis_kelamin?.toLowerCase()}, ${d.usia} th) — tanggal lahir diambil dari NIK.`;
+    } else if (d.nik) {
+      msg += ' NIK belum valid — periksa manual.';
+    }
+    if (d.catatan_nik && d.catatan_nik.length){
+      msg += ' ' + d.catatan_nik.join(' ');
+    }
+    if (d.kel_desa_ocr && d.kel_desa && d.kel_desa_ocr.toUpperCase().replace(/[^A-Z]/g,'') !== d.kel_desa.toUpperCase().replace(/[^A-Z]/g,'')){
+      msg += ` Kel/Desa dikoreksi dari "${d.kel_desa_ocr}" jadi "${d.kel_desa}" (cocok ${Math.round((d.kel_desa_match_score||0)*100)}% dgn data desa resmi di kecamatan ini) — cek ulang.`;
+    } else if (d.kel_desa_ocr && (d.kel_desa_match_score||0) < 0.55){
+      msg += ` Kel/Desa "${d.kel_desa_ocr}" tidak cukup mirip data desa resmi — isi/cek manual.`;
+    }
+    if (d.pekerjaan_ocr && d.pekerjaan && d.pekerjaan_ocr.toUpperCase().replace(/[^A-Z]/g,'') !== d.pekerjaan.toUpperCase().replace(/[^A-Z]/g,'')){
+      msg += ` Pekerjaan dikoreksi dari "${d.pekerjaan_ocr}" jadi "${d.pekerjaan}" (dicocokkan ke daftar pekerjaan umum, bukan 106 kategori resmi lengkap) — cek ulang.`;
+    }
+    if (d.agama_ocr && d.agama && d.agama_ocr.toUpperCase() !== d.agama.toUpperCase()){
+      msg += ` Agama dikoreksi dari "${d.agama_ocr}" jadi "${d.agama}".`;
+    }
+    if (d.status_perkawinan_ocr && d.status_perkawinan && d.status_perkawinan_ocr.toUpperCase() !== d.status_perkawinan.toUpperCase()){
+      msg += ` Status Perkawinan dikoreksi dari "${d.status_perkawinan_ocr}" jadi "${d.status_perkawinan}".`;
+    }
+    if (d.nama && d.nama.replace(/[^A-Za-z]/g,'').length > 14 && !d.nama.includes(' ')){
+      msg += ' Nama kemungkinan spasinya hilang saat OCR — cek & perbaiki manual (tidak dikoreksi otomatis, beda dgn field lain).';
+    }
+    statusEl.textContent = msg;
+  }catch(e){
+    statusEl.textContent = 'OCR gagal, isi manual.';
+  }
+}
+
+function retakeKtp(){
+  stopKtpCam();
+  document.getElementById('ktpStage').style.display='none';
+  document.getElementById('ktpMeters').style.display='none';
+  document.getElementById('ktpAutoToggleWrap').style.display='none';
+  document.getElementById('ktpPreview').style.display='none';
+  document.getElementById('captureBtn').style.display='none';
+  document.getElementById('captureBtn').disabled = true;
+  document.getElementById('retakeBtn').style.display='none';
+  document.getElementById('ocrStatus').textContent = '';
+  document.getElementById('ktpResBadge').textContent = '';
+  document.getElementById('ktpCountdown').classList.remove('on');
+  ktpBlob = null; ktpStable = 0; ktpCounting = false;
+}
+function stopKtpCam(){
+  cancelAnimationFrame(ktpRaf);
+  if(ktpStream){ ktpStream.getTracks().forEach(t=>t.stop()); ktpStream=null; }
+}
+
+// ---------- Payments CRUD ----------
+let editingPaymentId = null;
+
+function computeCheckoutEstimate(checkinStr, sewaBulan){
+  if(!checkinStr || !sewaBulan) return null;
+  const d = new Date(checkinStr+'T00:00:00');
+  const targetMonthIndex = d.getMonth() + Number(sewaBulan);
+  const targetYear = d.getFullYear() + Math.floor(targetMonthIndex / 12);
+  const targetMonth = ((targetMonthIndex % 12) + 12) % 12;
+  const lastDay = new Date(targetYear, targetMonth+1, 0).getDate();
+  const day = Math.min(d.getDate(), lastDay);
+  return `${targetYear}-${String(targetMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+
+function nextPeriodForTenant(tenantId){
+  const tenantPayments = payments.filter(p=>p.tenant_id===Number(tenantId));
+  if(tenantPayments.length === 0) return new Date().toISOString().slice(0,7);
+  const last = tenantPayments.map(p=>p.period).sort().slice(-1)[0];
+  const [y,m] = last.split('-').map(Number);
+  const nm = m===12 ? 1 : m+1;
+  const ny = m===12 ? y+1 : y;
+  return `${ny}-${String(nm).padStart(2,'0')}`;
+}
+
+function dueDateForPeriod(period){
+  return period ? `${period}-05` : null;
+}
+
+let currentPaymentPeriod = null;
+let currentPaymentDueDate = null;
+
+function openPaymentModal(){
+  editingPaymentId = null;
+  currentPaymentPeriod = null;
+  currentPaymentDueDate = null;
+  document.getElementById('paymentModalTitle').textContent = 'Tambah Tagihan';
+  document.getElementById('p_room').value = '';
+  document.getElementById('p_tenant_name_display').value = '';
+  document.getElementById('p_sewa_display').value = '';
+  document.getElementById('p_checkin_display').value = '';
+  document.getElementById('p_checkout_display').value = '';
+  document.getElementById('p_amount').value = '';
+  document.getElementById('p_status').value = 'belum_bayar';
+  document.getElementById('p_paid_date').value = '';
+  document.getElementById('p_method').value = '';
+  document.getElementById('p_notes').value = '';
+  document.getElementById('paymentModalBg').classList.add('active');
+}
+
+function onPaymentRoomChange(){
+  const tenantId = document.getElementById('p_room').value;
+  if(!tenantId){
+    document.getElementById('p_tenant_name_display').value = '';
+    document.getElementById('p_sewa_display').value = '';
+    document.getElementById('p_checkin_display').value = '';
+    document.getElementById('p_checkout_display').value = '';
+    currentPaymentPeriod = null;
+    currentPaymentDueDate = null;
+    return;
+  }
+  const t = tenants.find(x=>x.id===Number(tenantId));
+  if(!t) return;
+  document.getElementById('p_tenant_name_display').value = t.full_name || '';
+  document.getElementById('p_sewa_display').value = t.sewa_bulan ? t.sewa_bulan+' bulan' : '-';
+  document.getElementById('p_checkin_display').value = t.checkin_date || '-';
+  document.getElementById('p_checkout_display').value = computeCheckoutEstimate(t.checkin_date, t.sewa_bulan) || '-';
+  if(!document.getElementById('p_amount').value){
+    const room = rooms.find(r=>r.id===t.room_id);
+    if(room) document.getElementById('p_amount').value = room.price_monthly;
+  }
+  if(!editingPaymentId){
+    currentPaymentPeriod = nextPeriodForTenant(Number(tenantId));
+    currentPaymentDueDate = dueDateForPeriod(currentPaymentPeriod);
+  }
+}
+
+function onPaymentStatusChange(){
+  if(document.getElementById('p_status').value === 'lunas' && !document.getElementById('p_paid_date').value){
+    document.getElementById('p_paid_date').value = new Date().toISOString().slice(0,10);
+  }
+}
+
+function editPayment(paymentId){
+  const p = payments.find(x=>x.id===paymentId);
+  if(!p) return;
+  editingPaymentId = paymentId;
+  document.getElementById('paymentModalTitle').textContent = `Edit Tagihan: ${p.full_name} (${p.room_number||'-'})`;
+  document.getElementById('p_room').value = p.tenant_id;
+  document.getElementById('p_tenant_name_display').value = p.full_name || '';
+  document.getElementById('p_sewa_display').value = p.sewa_bulan ? p.sewa_bulan+' bulan' : '-';
+  document.getElementById('p_checkin_display').value = p.checkin_date || '-';
+  document.getElementById('p_checkout_display').value = p.checkout_estimate || '-';
+  document.getElementById('p_amount').value = p.amount;
+  document.getElementById('p_status').value = p.status;
+  document.getElementById('p_paid_date').value = p.paid_date || '';
+  document.getElementById('p_method').value = p.method || '';
+  document.getElementById('p_notes').value = p.notes || '';
+  currentPaymentPeriod = p.period;
+  currentPaymentDueDate = p.due_date;
+  document.getElementById('paymentModalBg').classList.add('active');
+}
+async function savePayment(){
+  const tenantId = document.getElementById('p_room').value;
+  if(!tenantId){ alert('Pilih kamar/penyewa'); return; }
+  const status = document.getElementById('p_status').value;
+  const paidDateInput = document.getElementById('p_paid_date').value;
+  const period = currentPaymentPeriod || nextPeriodForTenant(Number(tenantId));
+  const body = {
+    tenant_id: Number(tenantId),
+    period: period,
+    amount: Number(document.getElementById('p_amount').value)||0,
+    status: status,
+    method: document.getElementById('p_method').value||null,
+    due_date: currentPaymentDueDate || dueDateForPeriod(period),
+    paid_date: status==='lunas' ? (paidDateInput || new Date().toISOString().slice(0,10)) : null,
+    notes: document.getElementById('p_notes').value||null,
+  };
+  const url = editingPaymentId ? `${API}/api/payments/${editingPaymentId}` : API+'/api/payments';
+  const method = editingPaymentId ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  if(!res.ok){ const e = await res.json(); alert(e.detail||'Gagal menyimpan'); return; }
+  closeModal('paymentModalBg');
+  await Promise.all([loadPayments(), loadDashboard()]);
+}
+async function markPaid(id){
+  const p = payments.find(x=>x.id===id);
+  await fetch(API+'/api/payments/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    tenant_id: p.tenant_id, period: p.period, amount: p.amount, status:'lunas', method: p.method,
+    due_date: p.due_date, paid_date: new Date().toISOString().slice(0,10), notes: p.notes
+  })});
+  await Promise.all([loadPayments(), loadDashboard()]);
+}
+async function deletePayment(id){
+  if(!confirm('Hapus tagihan ini?')) return;
+  await fetch(API+'/api/payments/'+id, {method:'DELETE'});
+  await Promise.all([loadPayments(), loadDashboard()]);
+}
+
+// ---------- Lock control ----------
+async function lockAction(roomId, action){
+  const res = await fetch(API+`/api/rooms/${roomId}/lock`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action})});
+  const data = await res.json();
+  if(!res.ok){ alert(data.detail || 'Gagal mengirim perintah ke HAOS'); return; }
+  alert(action==='lock' ? 'Perintah kunci terkirim' : 'Perintah buka terkirim');
+  setTimeout(loadRooms, 1500);
+}
+async function wifiAction(roomId, action){
+  const res = await fetch(API+`/api/rooms/${roomId}/wifi`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action})});
+  const data = await res.json();
+  if(!res.ok){ alert(data.detail || 'Gagal mengirim perintah ke HAOS'); return; }
+  alert(action==='on' ? 'Perintah nyalakan WiFi terkirim' : 'Perintah matikan WiFi terkirim');
+  setTimeout(loadRooms, 1500);
+}
+
+// ---------- Notifikasi Telegram ----------
+async function loadNotifTab(){
+  try{
+    const s = await fetch(API+'/api/telegram/status').then(r=>r.json());
+    const dot = document.getElementById('tgDot'), text = document.getElementById('tgText');
+    dot.className = 'dot ' + (s.configured ? 'on' : 'off');
+    text.textContent = s.configured ? 'Telegram terkonfigurasi' : 'Telegram belum dikonfigurasi';
+    document.getElementById('tgSchedule').textContent =
+      `Pengecekan otomatis dijadwalkan tiap hari jam ${String(s.reminder_check_hour).padStart(2,'0')}:00. Pengingat dikirim H-${s.reminder_days_before.join(' & H-')} sebelum jatuh tempo.`;
+  }catch(e){}
+
+  try{
+    const notifs = await fetch(API+'/api/notifications').then(r=>r.json());
+    const labels = {h3:'H-3', h1:'H-1', h0:'Hari-H', overdue:'Terlambat'};
+    document.getElementById('notifBody').innerHTML = notifs.length ? notifs.map(n=>`
+      <tr><td>${n.sent_at}</td><td>${n.full_name}</td><td>${n.room_number||'-'}</td><td>${n.period}</td><td>${labels[n.notify_type]||n.notify_type}</td></tr>
+    `).join('') : '<tr><td colspan="5" class="empty">Belum ada notifikasi terkirim</td></tr>';
+  }catch(e){}
+}
+async function testTelegram(){
+  const el = document.getElementById('tgActionResult');
+  el.textContent = 'Mengirim…';
+  const res = await fetch(API+'/api/telegram/test', {method:'POST'});
+  const data = await res.json();
+  el.textContent = res.ok ? 'Pesan tes terkirim ke Telegram.' : ('Gagal: ' + (data.detail||'')); 
+}
+async function runTelegramCheck(){
+  const el = document.getElementById('tgActionResult');
+  el.textContent = 'Menjalankan pengecekan…';
+  const res = await fetch(API+'/api/telegram/run-check', {method:'POST'});
+  const data = await res.json();
+  const sentCount = (data.notifications||[]).filter(n=>n.sent).length;
+  el.textContent = `Diperiksa ${data.checked} tagihan, ${sentCount} notifikasi terkirim.`;
+  await loadNotifTab();
+}
+
+document.querySelector('nav button[data-view="notif"]').addEventListener('click', loadNotifTab);
+
+// ---------- Auth ----------
+async function checkAuth(){
+  try{
+    const res = await fetch(API+'/api/auth/me');
+    if(res.ok){
+      const d = await res.json();
+      showApp(d.username);
+    } else {
+      showLogin();
+    }
+  }catch(e){
+    showLogin();
+  }
+}
+function showLogin(){
+  document.getElementById('loginScreen').classList.add('active');
+  document.getElementById('appRoot').style.display = 'none';
+}
+function showApp(username){
+  document.getElementById('loginScreen').classList.remove('active');
+  document.getElementById('appRoot').style.display = 'block';
+  document.getElementById('userText').textContent = username;
+  loadAll();
+}
+async function doLogin(){
+  const username = document.getElementById('login_username').value.trim();
+  const password = document.getElementById('login_password').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if(!username || !password){ errEl.textContent = 'Isi username dan password'; return; }
+  try{
+    const res = await fetch(API+'/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password})});
+    const data = await res.json();
+    if(!res.ok){ errEl.textContent = data.detail || 'Login gagal'; return; }
+    document.getElementById('login_password').value = '';
+    showApp(data.username);
+  }catch(e){
+    errEl.textContent = 'Tidak bisa menghubungi server';
+  }
+}
+async function doLogout(){
+  await fetch(API+'/api/auth/logout', {method:'POST'});
+  showLogin();
+}
+async function changePassword(){
+  const old_password = document.getElementById('cp_old').value;
+  const new_password = document.getElementById('cp_new').value;
+  const el = document.getElementById('cpResult');
+  el.textContent = '';
+  if(!old_password || !new_password){ el.textContent = 'Isi kedua kolom password'; return; }
+  const res = await fetch(API+'/api/auth/change-password', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({old_password, new_password})});
+  const data = await res.json();
+  if(!res.ok){ el.textContent = data.detail || 'Gagal mengubah password'; return; }
+  el.textContent = 'Password berhasil diubah.';
+  document.getElementById('cp_old').value = '';
+  document.getElementById('cp_new').value = '';
+}
+async function loadUsers(){
+  const users = await fetch(API+'/api/auth/users').then(r=>r.json());
+  document.getElementById('usersBody').innerHTML = users.map(u=>`
+    <tr><td>${u.username}</td><td>${u.created_at}</td>
+      <td>${u.username==='admin' ? '<span class="small-muted">🔒 akun utama, tidak bisa dihapus</span>' : `<button class="btn ghost sm" onclick="deleteUser('${u.username}')">Hapus</button>`}</td>
+    </tr>
+  `).join('');
+}
+function openAddUserModal(){
+  document.getElementById('nu_username').value='';
+  document.getElementById('nu_password').value='';
+  document.getElementById('userModalBg').classList.add('active');
+}
+async function saveNewUser(){
+  const username = document.getElementById('nu_username').value.trim();
+  const password = document.getElementById('nu_password').value;
+  if(!username || password.length < 6){ alert('Username wajib diisi, password minimal 6 karakter'); return; }
+  const res = await fetch(API+'/api/auth/users', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password})});
+  const data = await res.json();
+  if(!res.ok){ alert(data.detail || 'Gagal menambah akun'); return; }
+  closeModal('userModalBg');
+  await loadUsers();
+}
+async function deleteUser(username){
+  if(!confirm(`Hapus akun "${username}"?`)) return;
+  const res = await fetch(API+'/api/auth/users/'+encodeURIComponent(username), {method:'DELETE'});
+  const data = await res.json();
+  if(!res.ok){ alert(data.detail || 'Gagal menghapus akun'); return; }
+  await loadUsers();
+}
+
+document.querySelector('nav button[data-view="account"]').addEventListener('click', loadUsers);
+
+// ---------- Backup Google Drive ----------
+function fmtBytes(n){
+  if(!n) return '-';
+  const units = ['B','KB','MB','GB'];
+  let i = 0; let v = n;
+  while(v >= 1024 && i < units.length-1){ v/=1024; i++; }
+  return v.toFixed(1)+' '+units[i];
+}
+async function loadBackupTab(){
+  try{
+    const s = await fetch(API+'/api/backup/status').then(r=>r.json());
+    const dot = document.getElementById('bkDot'), text = document.getElementById('bkText');
+    dot.className = 'dot ' + (s.configured ? 'on' : 'off');
+    text.textContent = s.configured ? 'Google Drive terkonfigurasi' : 'Google Drive belum dikonfigurasi';
+    document.getElementById('bkSchedule').textContent =
+      `Backup otomatis terjadwal tiap hari jam ${String(s.backup_hour).padStart(2,'0')}:00. Menyimpan ${s.keep_last} backup terbaru di Drive` +
+      (s.include_ktp_photos ? ', termasuk foto KTP.' : ' (tanpa foto KTP).');
+    const diagEl = document.getElementById('bkDiag');
+    if(diagEl){
+      if(s.folder_id_raw){
+        diagEl.textContent = `Folder ID yang dipakai: ${s.folder_id_used}` +
+          (s.folder_id_was_cleaned ? ` (dibersihkan otomatis dari: ${s.folder_id_raw})` : '');
+      } else {
+        diagEl.textContent = 'gdrive_folder_id belum diisi di config.json';
+      }
+    }
+  }catch(e){}
+
+  try{
+    const history = await fetch(API+'/api/backup/history').then(r=>r.json());
+    document.getElementById('backupBody').innerHTML = history.length ? history.map(h=>`
+      <tr><td>${h.created_at}</td><td>${h.filename}</td><td>${fmtBytes(h.size_bytes)}</td>
+        <td><span class="badge ${h.status==='ok'?'lunas':'checkout'}">${h.status==='ok'?'Berhasil':'Gagal'}</span>${h.status!=='ok' && h.error ? ` <span class="small-muted">(${h.error})</span>` : ''}</td>
+      </tr>
+    `).join('') : '<tr><td colspan="4" class="empty">Belum ada backup dijalankan</td></tr>';
+  }catch(e){}
+}
+async function runBackupNow(){
+  const el = document.getElementById('bkActionResult');
+  el.textContent = 'Membuat & mengunggah backup…';
+  const res = await fetch(API+'/api/backup/run', {method:'POST'});
+  const data = await res.json();
+  el.textContent = res.ok ? `Backup berhasil: ${data.filename} (${fmtBytes(data.size_bytes)})` : ('Gagal: ' + (data.detail||''));
+  await loadBackupTab();
+}
+document.querySelector('nav button[data-view="backup"]').addEventListener('click', loadBackupTab);
+
+// Interceptor: kalau sesi habis di tengah pemakaian, kembali ke layar login
+const _origFetch = window.fetch;
+window.fetch = async function(...args){
+  const res = await _origFetch(...args);
+  const url = args[0] ? args[0].toString() : '';
+  if(res.status === 401 && !url.includes('/api/auth/')){
+    showLogin();
+  }
+  return res;
+};
+
+// Tutup modal kalau klik di area gelap luar kotak modal (kecuali layar login)
+document.querySelectorAll('.modal-bg').forEach(bg=>{
+  if(bg.id === 'loginScreen') return;
+  bg.addEventListener('click', (e)=>{
+    if(e.target === bg) bg.classList.remove('active');
+  });
+});
+
+checkAuth();
+</script>
+</body>
+</html>

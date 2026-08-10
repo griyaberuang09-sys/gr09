@@ -72,59 +72,28 @@
     </div>
   </div>
 
-  <!-- STEP 2: Foto KTP -->
+  <!-- STEP 2: Foto KTP + Kirim -->
   <div class="step" id="step2">
     <div class="panel">
       <label style="margin-bottom:6px;">Foto KTP</label>
-      <p class="small-muted" style="margin:0 0 14px;">Ambil foto KTP kamu dengan kamera HP, lalu unggah di sini.</p>
+      <p class="small-muted" style="margin:0 0 14px;">Ambil foto KTP kamu dengan kamera HP, lalu unggah di sini. Admin Griya Beruang akan memeriksa & melengkapi datanya.</p>
 
       <img id="preview" class="ktp-preview">
 
       <button class="btn" style="margin-bottom:14px;" onclick="document.getElementById('ktpFileInput').click()">📷 Ambil/Unggah Foto KTP</button>
       <input type="file" id="ktpFileInput" accept="image/*" onchange="handleFileUpload(event)">
 
-      <p id="ocrStatus" class="status info" style="display:none;"></p>
+      <p id="submitStatus" class="status err" style="display:none;"></p>
 
       <div class="row">
         <button class="btn ghost" onclick="goStep(1)">Kembali</button>
-        <button class="btn" id="toStep3Btn" disabled onclick="goStep(3)">Lanjut</button>
+        <button class="btn" id="submitBtn" disabled onclick="submitAll()">Kirim</button>
       </div>
     </div>
   </div>
 
-  <!-- STEP 3: Review -->
+  <!-- STEP 3: Selesai -->
   <div class="step" id="step3">
-    <div class="panel">
-      <label>NIK <span class="req">*</span></label>
-      <input id="f_nik" inputmode="numeric" maxlength="16" oninput="onNikInput(this.value)">
-      <p class="small-muted" id="nikDecodeHint" style="margin:-8px 0 14px;"></p>
-      <label>Nama (sesuai KTP) <span class="req">*</span></label>
-      <input id="f_nama">
-      <label>Tempat Lahir</label>
-      <input id="f_tempat_lahir">
-      <label>Tanggal Lahir</label>
-      <input id="f_tgl_lahir" type="date">
-      <label>Jenis Kelamin</label>
-      <select id="f_jk"><option value="">—</option><option>LAKI-LAKI</option><option>PEREMPUAN</option></select>
-      <label>Alamat</label>
-      <textarea id="f_alamat" rows="2"></textarea>
-      <label>Kecamatan</label>
-      <input id="f_kecamatan">
-      <label>Kabupaten/Kota</label>
-      <input id="f_kabkota">
-      <label>Provinsi</label>
-      <input id="f_provinsi">
-
-      <p id="submitStatus" class="status err" style="display:none;"></p>
-      <div class="row">
-        <button class="btn ghost" onclick="goStep(2)">Kembali</button>
-        <button class="btn" id="submitBtn" onclick="submitAll()">Kirim</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- STEP 4: Selesai -->
-  <div class="step" id="step4">
     <div class="center">
       <div class="icon">✅</div>
       <h1>Terkirim</h1>
@@ -196,9 +165,6 @@ function goStep(n){
   if (n === 2 && !document.getElementById('phone').value.trim()){
     alert('Isi nomor HP dulu.'); return;
   }
-  if (n === 3 && !ktpBlob){
-    alert('Ambil atau unggah foto KTP dulu.'); return;
-  }
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById('step'+n).classList.add('active');
 }
@@ -225,131 +191,31 @@ async function handleFileUpload(evt){
   const preview = document.getElementById('preview');
   preview.src = URL.createObjectURL(blob);
   preview.style.display = 'block';
-  await runOcr(blob);
-}
-
-// ---------- Isi otomatis dari NIK (kalau diketik/dikoreksi manual di Step 3) ----------
-// NIK cuma menyimpan kode wilayah s.d. kecamatan + tanggal lahir + jenis
-// kelamin -- TIDAK menyimpan alamat jalan/RT/RW, jadi field alamat
-// sengaja tidak disentuh di sini.
-let nikDecodeTimer = null;
-function onNikInput(val){
-  clearTimeout(nikDecodeTimer);
-  const digits = (val||'').replace(/\D/g,'');
-  const hint = document.getElementById('nikDecodeHint');
-  if (digits.length !== 16){
-    hint.textContent = digits.length ? `${digits.length}/16 digit` : '';
-    return;
-  }
-  hint.textContent = 'Memeriksa NIK…';
-  nikDecodeTimer = setTimeout(() => decodeNik(digits), 350);
-}
-
-async function decodeNik(nik){
-  const hint = document.getElementById('nikDecodeHint');
-  try{
-    const res = await fetch('/api/telegram-app/nik-decode', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({init_data: initData, nik: nik}),
-    });
-    const d = await res.json();
-    if (!res.ok){ hint.textContent = d.detail || 'Gagal memeriksa NIK.'; return; }
-
-    if (d.tanggal_lahir) document.getElementById('f_tgl_lahir').value = d.tanggal_lahir;
-    if (d.jenis_kelamin) document.getElementById('f_jk').value = d.jenis_kelamin;
-    if (d.kecamatan) document.getElementById('f_kecamatan').value = d.kecamatan;
-    if (d.kabupaten_kota) document.getElementById('f_kabkota').value = d.kabupaten_kota;
-    if (d.provinsi) document.getElementById('f_provinsi').value = d.provinsi;
-
-    if (d.valid && d.kecamatan){
-      hint.textContent = `NIK valid — ${d.kecamatan}, ${d.kabupaten_kota} (${d.usia} th). Alamat tetap perlu diisi manual.`;
-      hint.style.color = 'var(--moss)';
-    } else if (d.valid){
-      hint.textContent = `NIK valid, kecamatan tidak ada di tabel wilayah. ${(d.catatan||[]).join(' ')}`;
-      hint.style.color = 'var(--honey)';
-    } else {
-      hint.textContent = 'NIK tidak valid: ' + (d.catatan||[]).join(' ');
-      hint.style.color = 'var(--danger)';
-    }
-  }catch(e){
-    hint.textContent = 'Gagal menghubungi server.';
-    hint.style.color = 'var(--danger)';
-  }
-}
-
-async function runOcr(blob){
-  const statusEl = document.getElementById('ocrStatus');
-  statusEl.style.display='block'; statusEl.className='status info';
-  statusEl.textContent = 'Membaca data KTP…';
-  try{
-    const fd = new FormData();
-    fd.append('init_data', initData);
-    fd.append('file', blob, 'ktp.jpg');
-    const res = await fetch('/api/telegram-app/ocr', {method:'POST', body: fd});
-    const d = await res.json();
-    if (!res.ok){ statusEl.className='status err'; statusEl.textContent = d.detail || 'OCR gagal, isi manual di langkah berikut.'; document.getElementById('toStep3Btn').disabled=false; return; }
-
-    document.getElementById('f_nik').value = d.nik || '';
-    document.getElementById('f_nama').value = d.nama || '';
-    document.getElementById('f_tempat_lahir').value = d.tempat_lahir || '';
-    document.getElementById('f_tgl_lahir').value = d.tgl_lahir || '';
-    document.getElementById('f_jk').value = d.jenis_kelamin || '';
-    document.getElementById('f_alamat').value = d.alamat || '';
-    document.getElementById('f_kecamatan').value = d.kecamatan_nik || '';
-    document.getElementById('f_kabkota').value = d.kabupaten_kota_nik || '';
-    document.getElementById('f_provinsi').value = d.provinsi_nik || '';
-
-    if (d.nik_valid){
-      statusEl.className='status ok';
-      statusEl.textContent = `Terbaca — NIK valid (${d.kecamatan_nik || d.provinsi_nik}). Cek ulang di langkah berikut sebelum kirim.`;
-    } else {
-      statusEl.className='status err';
-      statusEl.textContent = 'NIK belum terbaca dengan pasti — lengkapi manual di langkah berikut.';
-    }
-    document.getElementById('toStep3Btn').disabled = false;
-  }catch(e){
-    statusEl.className='status err';
-    statusEl.textContent = 'Gagal menghubungi server, isi manual di langkah berikut.';
-    document.getElementById('toStep3Btn').disabled = false;
-  }
+  document.getElementById('submitBtn').disabled = false;
 }
 
 // ---------- Kirim akhir ----------
 async function submitAll(){
-  const nik = document.getElementById('f_nik').value.replace(/\D/g,'');
-  const nama = document.getElementById('f_nama').value.trim();
   const statusEl = document.getElementById('submitStatus');
 
-  if (nik.length !== 16 || !nama){
+  if (!ktpBlob){
     statusEl.style.display='block';
-    statusEl.textContent = 'NIK (16 digit) dan Nama wajib diisi dengan benar.';
+    statusEl.textContent = 'Ambil atau unggah foto KTP dulu.';
     return;
   }
 
   document.getElementById('submitBtn').disabled = true;
   document.getElementById('submitBtn').textContent = 'Mengirim…';
 
-  let photoBase64 = null;
-  if (ktpBlob){
-    photoBase64 = await new Promise(res => {
-      const reader = new FileReader();
-      reader.onloadend = () => res(reader.result);
-      reader.readAsDataURL(ktpBlob);
-    });
-  }
+  const photoBase64 = await new Promise(res => {
+    const reader = new FileReader();
+    reader.onloadend = () => res(reader.result);
+    reader.readAsDataURL(ktpBlob);
+  });
 
   const body = {
     init_data: initData,
     phone: document.getElementById('phone').value.trim(),
-    ktp_nik: nik,
-    ktp_nama: nama,
-    ktp_tempat_lahir: document.getElementById('f_tempat_lahir').value || null,
-    ktp_tgl_lahir: document.getElementById('f_tgl_lahir').value || null,
-    ktp_jenis_kelamin: document.getElementById('f_jk').value || null,
-    ktp_alamat: document.getElementById('f_alamat').value || null,
-    ktp_kecamatan: document.getElementById('f_kecamatan').value || null,
-    ktp_kabupaten_kota: document.getElementById('f_kabkota').value || null,
-    ktp_provinsi: document.getElementById('f_provinsi').value || null,
     ktp_photo_base64: photoBase64,
   };
 
@@ -365,7 +231,7 @@ async function submitAll(){
       document.getElementById('submitBtn').textContent = 'Kirim';
       return;
     }
-    goStep(4);
+    goStep(3);
     if (tg) setTimeout(() => tg.close(), 2500);
   }catch(e){
     statusEl.style.display='block';

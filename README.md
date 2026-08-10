@@ -3,25 +3,28 @@
 Folder ini (`telegram_gateway/`) adalah proyek TERPISAH dari `app.py` utama —
 deploy folder ini saja ke Railway, bukan seluruh Griya Beruang.
 
-## ⚠️ Sejak Agustus 2026: pakai PaddleOCR, bukan Tesseract lagi
+## Arsitektur (Agustus 2026): upload foto saja, TIDAK ADA OCR di Railway
 
-Tesseract terbukti gagal total membaca KTP ber-hologram (0 karakter
-terbaca di beberapa foto nyata). PaddleOCR jauh lebih akurat, TAPI punya
-laporan kebocoran memori kronis di CPU (banyak issue GitHub 2021-2026,
-RAM naik terus tiap request & tidak pernah turun). Ini risiko yang
-**sengaja diterima** — mitigasinya proses restart sendiri secara berkala
-(lihat `_MAX_OCR_REQUESTS_BEFORE_RESTART` di `main.py`). Konsekuensinya:
+Setelah beberapa putaran percobaan (Tesseract gagal baca KTP ber-hologram,
+lalu PaddleOCR kena macam-macam masalah teknis di Railway — libGL hilang,
+error internal PIR/oneDNN, risiko kebocoran memori kronis), diputuskan:
+**Railway cuma menerima upload foto KTP mentah dari penghuni lewat Mini
+App, TIDAK memproses OCR sama sekali.** OCR (PaddleOCR) sepenuhnya jalan
+di **server lokal**, otomatis begitu admin membuka draft dari menu
+"Draft Telegram" — admin tetap dapat pengalaman auto-fill yang sama,
+cuma titik prosesnya pindah ke server yang resource-nya jauh lebih leluasa
+dan sudah terbukti stabil.
 
-- **Butuh RAM lebih besar** dari sebelumnya — minimal 2GB, idealnya 4GB.
-  Paket gratis/hobby Railway kemungkinan besar TIDAK CUKUP — cek dan
-  upgrade plan kalau perlu di Settings → Usage.
-- **Restart Policy WAJIB "On Failure"** (Settings → Deploy → Restart
-  Policy) dengan max retries tinggi (mis. 10). Kalau ini disetel "Never",
-  katup pengaman memori tidak akan pernah menghidupkan ulang prosesnya
-  sendiri, dan container akan OOM-crash tanpa auto-recovery.
-- Kalau Railway sering terlihat "restart sendiri" di Deploy Logs, itu
-  **memang disengaja** — cek `ocr_requests_since_start` di
-  `/api/gateway/health`, itu penghitung sebelum restart otomatis terpicu.
+Konsekuensinya, folder ini sekarang JAUH lebih ringan dari versi
+sebelumnya:
+- Tidak ada `paddlepaddle`/`paddleocr`/`numpy`/`Pillow` di `requirements.txt`.
+- Tidak ada `libgomp1`/`libgl1`/`libglib2.0-0` di `Dockerfile`.
+- Tidak ada endpoint `/api/telegram-app/ocr` sama sekali di `main.py`.
+- Tidak ada katup pengaman restart otomatis (tidak perlu lagi, tidak ada
+  proses berat yang bisa bocor memori di sini).
+- Mini App (`telegram_checkin.html`) cuma 2 langkah: Nomor HP (share
+  kontak Telegram) → Unggah Foto KTP → Kirim. Tidak ada form NIK/data
+  KTP di Mini App sama sekali.
 
 ## Langkah
 
@@ -31,14 +34,14 @@ RAM naik terus tiap request & tidak pernah turun). Ini risiko yang
 2. Di Railway: **New Project → Deploy from GitHub repo** → pilih repo ini.
    - Kalau `telegram_gateway/` bukan root repo, isi **Root Directory** =
      `telegram_gateway` di Settings.
-   - Pastikan build method di Settings adalah **Dockerfile**, bukan Nixpacks
-     (Nixpacks tidak akan memasang `libgomp1` yang dibutuhkan PaddlePaddle).
+   - Build method **Dockerfile** atau Nixpacks otomatis — dua-duanya aman
+     sekarang, karena tidak ada lagi dependency sistem khusus yang
+     dibutuhkan (beda dari waktu masih pakai Tesseract/PaddleOCR).
 
 3. Di tab **Variables**, isi:
    ```
    TELEGRAM_BOT_TOKEN = <sama persis dengan token bot di config.json server lokal>
    GATEWAY_SECRET      = <string acak buatan sendiri>
-   MAX_OCR_BEFORE_RESTART = 15   # opsional, default 15 kalau tidak diisi
    ```
    Buat `GATEWAY_SECRET` dengan:
    ```bash
@@ -48,19 +51,13 @@ RAM naik terus tiap request & tidak pernah turun). Ini risiko yang
 4. Di tab **Settings → Networking**, klik **Generate Domain** — Railway
    kasih URL publik otomatis, mis. `https://griya-beruang-gateway-production.up.railway.app`.
 
-5. **Settings → Deploy → Restart Policy = "On Failure"**, max retries
-   setinggi mungkin. Ini WAJIB sekarang (lihat penjelasan di atas), bukan
-   opsional lagi seperti versi Tesseract sebelumnya.
-
-6. **Pasang Volume** (Settings → Volumes) mount ke `/root/.paddlex` —
-   ini SEKARANG LEBIH PENTING dari sebelumnya: tanpa Volume, model
-   PaddleOCR (~100MB+) akan ter-download ulang dari server Baidu/HuggingFace
-   SETIAP KALI proses restart (termasuk restart otomatis dari katup
-   pengaman memori) — bisa bikin gateway lambat/gagal terus-menerus kalau
-   sumber modelnya lambat/di-rate-limit. Pasang juga Volume kedua ke
-   `/app/data` (draft yang mengambang) seperti sebelumnya, atau gabung
-   satu Volume yang mencakup keduanya kalau Railway plan-mu membatasi
-   jumlah Volume per service.
+5. (Opsional tapi disarankan) Pasang **Volume** di Settings → mount ke
+   `/app/data` — supaya draft yang lagi "mengambang" tidak hilang kalau
+   container restart persis di jendela sebelum sempat dijemput server lokal.
+   Tanpa Volume pun tetap jalan; risikonya kecil (cuma submission yang
+   sangat kebetulan waktunya, dan penghuni tinggal submit ulang). Restart
+   Policy juga tidak lagi krusial seperti versi PaddleOCR sebelumnya —
+   boleh dibiarkan default.
 
 ## Setelah Railway jalan, kembali ke server lokal
 
@@ -87,20 +84,24 @@ curl -X POST https://<server-lokal>/api/telegram/gateway-pull-now \
   -H "Cookie: session_token=<token>"
 ```
 
+**Setelah draft dijemput:** buka menu "Draft Telegram" di panel admin,
+klik "Setujui & Lanjut Check-in" pada satu draft — kalau drafnya cuma
+berisi foto (tanpa NIK), sistem OTOMATIS menjalankan OCR PaddleOCR lokal
+terhadap foto itu dan mengisi form. Cek hasilnya sebelum Simpan, seperti
+biasa.
+
 ## Cek kesehatan gateway
 
 ```
 GET https://<railway-url>/api/gateway/health
 ```
-Menampilkan `TELEGRAM_BOT_TOKEN`/`GATEWAY_SECRET` sudah terset, berapa
-submission menunggu dijemput, DAN sekarang juga `ocr_requests_since_start`
-+ `ocr_restart_threshold` — pantau ini kalau curiga ada masalah restart.
+Menampilkan `TELEGRAM_BOT_TOKEN`/`GATEWAY_SECRET` sudah terset dan berapa
+submission menunggu dijemput.
 
-## Kalau ktp_core.py / wilayah_nik.csv / wilayah_desa.csv di server lokal berubah
+## Kalau ktp_core.py di server lokal berubah
 
-Salin ulang ketiganya ke folder ini lalu redeploy — dua tempat ini sengaja
-independen (Railway tidak bisa mengakses file server lokal), jadi tidak
-otomatis tersinkron. **Sejak Agustus 2026, kedua `ktp_core.py` (lokal &
-Railway) sama-sama PaddleOCR** — jadi sekarang aman disalin apa adanya
-tanpa perlu edit manual seperti sebelumnya.
-
+Folder ini punya `ktp_core.py` versi RINGKAS (cuma `decode_nik` +
+`verify_telegram_init_data`) — SENGAJA BEDA dari `ktp_core.py` di server
+lokal (yang lengkap dengan PaddleOCR). **JANGAN salin seluruh file dari
+server lokal ke sini** — kalau `_WILAYAH_KEC`/`decode_nik`/`PROVINSI_KTP`
+di server lokal berubah, salin bagian itu saja secara manual.
